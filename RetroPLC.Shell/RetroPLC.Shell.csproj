@@ -5,7 +5,7 @@
         <Nullable>enable</Nullable>
         <ApplicationManifest>app.manifest</ApplicationManifest>
         <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
-        <RootNamespace>AvaloniaIDE_Test</RootNamespace>
+        <RootNamespace>RetroPLC.Shell</RootNamespace>
     </PropertyGroup>
 
     <ItemGroup>

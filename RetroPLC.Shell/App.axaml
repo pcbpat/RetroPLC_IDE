@@ -62,7 +62,7 @@
         <!-- Classic's original fixed metrics target an 11px system font. Keep
              its geometry proportional when the user selects a larger size. -->
         <Style Selector="common|StatusBar">
-            <Setter Property="Height" Value="{DynamicResource AvaloniaIDE_Test.StatusBarHeight}" />
+            <Setter Property="Height" Value="{DynamicResource RetroPLC.Shell.StatusBarHeight}" />
         </Style>
         <Style Selector="ToolTabStripItem">
             <Setter Property="MinHeight" Value="{DynamicResource RetroPLC.Shell.DockTabMinHeight}" />
@@ -125,25 +125,25 @@
             <Setter Property="Height" Value="{DynamicResource RetroPLC.Shell.DockMenuGlyphHeight}" />
         </Style>
         <Style Selector="MenuItem">
-            <Setter Property="Height" Value="{DynamicResource AvaloniaIDE_Test.MenuItemHeight}" />
-            <Setter Property="Padding" Value="{DynamicResource AvaloniaIDE_Test.MenuItemPadding}" />
+            <Setter Property="Height" Value="{DynamicResource RetroPLC.Shell.MenuItemHeight}" />
+            <Setter Property="Padding" Value="{DynamicResource RetroPLC.Shell.MenuItemPadding}" />
         </Style>
         <Style Selector="MenuItem:separator">
-            <Setter Property="Height" Value="{DynamicResource AvaloniaIDE_Test.MenuSeparatorHeight}" />
+            <Setter Property="Height" Value="{DynamicResource RetroPLC.Shell.MenuSeparatorHeight}" />
         </Style>
         <Style Selector="MenuItem /template/ Path#rightArrow">
-            <Setter Property="Width" Value="{DynamicResource AvaloniaIDE_Test.MenuArrowWidth}" />
-            <Setter Property="Height" Value="{DynamicResource AvaloniaIDE_Test.MenuArrowHeight}" />
+            <Setter Property="Width" Value="{DynamicResource RetroPLC.Shell.MenuArrowWidth}" />
+            <Setter Property="Height" Value="{DynamicResource RetroPLC.Shell.MenuArrowHeight}" />
             <Setter Property="Stretch" Value="Fill" />
         </Style>
         <Style Selector="MenuItem /template/ ContentControl#PART_ToggleIconPresenter Path">
-            <Setter Property="Width" Value="{DynamicResource AvaloniaIDE_Test.MenuCheckSize}" />
-            <Setter Property="Height" Value="{DynamicResource AvaloniaIDE_Test.MenuCheckSize}" />
+            <Setter Property="Width" Value="{DynamicResource RetroPLC.Shell.MenuCheckSize}" />
+            <Setter Property="Height" Value="{DynamicResource RetroPLC.Shell.MenuCheckSize}" />
             <Setter Property="Stretch" Value="Fill" />
         </Style>
         <Style Selector="MenuItem /template/ ContentControl#PART_ToggleIconPresenter Ellipse">
-            <Setter Property="Width" Value="{DynamicResource AvaloniaIDE_Test.MenuCheckSize}" />
-            <Setter Property="Height" Value="{DynamicResource AvaloniaIDE_Test.MenuCheckSize}" />
+            <Setter Property="Width" Value="{DynamicResource RetroPLC.Shell.MenuCheckSize}" />
+            <Setter Property="Height" Value="{DynamicResource RetroPLC.Shell.MenuCheckSize}" />
         </Style>
 
         <!-- Match the editor surface to ClassicTheme's TreeView (Project)

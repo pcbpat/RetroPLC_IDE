@@ -8,7 +8,7 @@
     <UserControl.Styles>
         <Style Selector="controls|ReadOnlyDockTerminalView">
             <Setter Property="FontFamily" Value="Cascadia Mono,Consolas,DejaVu Sans Mono,Monospace" />
-            <Setter Property="FontSize" Value="{DynamicResource AvaloniaIDE_Test.CodeTextSize}" />
+            <Setter Property="FontSize" Value="{DynamicResource RetroPLC.Shell.CodeTextSize}" />
             <Setter Property="BufferSize" Value="5000" />
             <Setter Property="FocusAdorner" Value="{x:Null}" />
             <Setter Property="Background" Value="{DynamicResource {x:Static commonControls:SystemColors.WindowBrushKey}}" />

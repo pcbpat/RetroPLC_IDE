@@ -46,7 +46,7 @@
                          Document="{Binding Document}"
                          ShowLineNumbers="True"
                          FontFamily="Cascadia Mono,Consolas,DejaVu Sans Mono,Monospace"
-                         FontSize="{DynamicResource AvaloniaIDE_Test.CodeTextSize}"
+                         FontSize="{DynamicResource RetroPLC.Shell.CodeTextSize}"
                          HorizontalScrollBarVisibility="Auto"
                          VerticalScrollBarVisibility="Auto">
             <edit:TextEditor.ContextMenu>
