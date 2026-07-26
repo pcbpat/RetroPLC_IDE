@@ -19,6 +19,10 @@ public sealed class DevicesViewModel : Tool
     private readonly Action<NewPouDefinition>? _addPou;
     private readonly Action<string>? _openLibrary;
     private readonly Action<CodesysLibraryImport>? _importCodesysLibrary;
+    private readonly Dictionary<string, IReadOnlyList<StrucppDocumentSymbol>> _documentSymbols =
+        new(StringComparer.OrdinalIgnoreCase);
+    private ProjectDocument? _currentProject;
+    private string? _projectDirectory;
 
     public DevicesViewModel(
         Action<string>? openDocument = null,
@@ -135,6 +139,10 @@ public sealed class DevicesViewModel : Tool
 
     public void LoadProject(ProjectDocument document, string projectDirectory)
     {
+        if (!string.Equals(_projectDirectory, projectDirectory, StringComparison.OrdinalIgnoreCase))
+            _documentSymbols.Clear();
+        _currentProject = document;
+        _projectDirectory = projectDirectory;
         SynchronizeProjectFiles(document, projectDirectory);
         SynchronizeLibraries(document, projectDirectory);
         LoadProjectTree(document, projectDirectory);
@@ -146,6 +154,34 @@ public sealed class DevicesViewModel : Tool
         SynchronizeLibraries(document, projectDirectory);
         LoadProjectTree(document, projectDirectory);
         return changed;
+    }
+
+    public void SetDocumentSymbols(
+        ProjectDocument document,
+        string projectDirectory,
+        IReadOnlyDictionary<string, IReadOnlyList<StrucppDocumentSymbol>> symbols)
+    {
+        if (!ReferenceEquals(_currentProject, document) ||
+            !string.Equals(_projectDirectory, projectDirectory, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _documentSymbols.Clear();
+        foreach (var (filePath, documentSymbols) in symbols)
+            _documentSymbols[Path.GetFullPath(filePath)] = documentSymbols;
+        LoadProjectTree(document, projectDirectory);
+    }
+
+    public void SetDocumentSymbols(
+        string filePath,
+        IReadOnlyList<StrucppDocumentSymbol> symbols)
+    {
+        if (_currentProject is null || _projectDirectory is null)
+            return;
+
+        _documentSymbols[Path.GetFullPath(filePath)] = symbols;
+        LoadProjectTree(_currentProject, _projectDirectory);
     }
 
     private void LoadProjectTree(ProjectDocument document, string projectDirectory)
@@ -197,7 +233,7 @@ public sealed class DevicesViewModel : Tool
                 libraryFileName: library.FileName))
             .ToList();
 
-    private static DeviceTreeNode CreateProjectRootNode(
+    private DeviceTreeNode CreateProjectRootNode(
         ProjectNodeDefinition definition,
         string projectDirectory)
     {
@@ -216,31 +252,31 @@ public sealed class DevicesViewModel : Tool
             definition.LibraryFileName);
     }
 
-    private static DeviceTreeNode CreateTreeNode(
+    private DeviceTreeNode CreateTreeNode(
         ProjectNodeDefinition definition,
         string projectDirectory)
     {
         var children = definition.Children
             .Select(child => CreateTreeNode(child, projectDirectory))
             .ToList();
-        var memberNodes = CreatePouMemberNodes(definition, projectDirectory);
-        children.AddRange(memberNodes);
+        var symbolNodes = CreateDocumentSymbolNodes(definition, projectDirectory);
+        children.AddRange(symbolNodes);
 
         return new DeviceTreeNode(
             definition.Name,
             DeviceIcons.Get(definition.Icon),
             children,
-            memberNodes.Count == 0 && definition.IsExpanded,
+            symbolNodes.Count == 0 && definition.IsExpanded,
             definition.FilePath,
             definition.LibraryFileName);
     }
 
-    private static IReadOnlyList<DeviceTreeNode> CreatePouMemberNodes(
+    private IReadOnlyList<DeviceTreeNode> CreateDocumentSymbolNodes(
         ProjectNodeDefinition definition,
         string projectDirectory)
     {
         if (definition.FilePath is not { } relativePath ||
-            !Path.GetExtension(relativePath).Equals(".st", StringComparison.OrdinalIgnoreCase))
+            !IsStructuredTextPath(relativePath))
         {
             return [];
         }
@@ -248,39 +284,62 @@ public sealed class DevicesViewModel : Tool
         var fullPath = Path.GetFullPath(Path.Combine(
             projectDirectory,
             relativePath.Replace('/', Path.DirectorySeparatorChar)));
-        var relativeToProject = Path.GetRelativePath(projectDirectory, fullPath);
-        if (Path.IsPathRooted(relativeToProject) ||
-            relativeToProject.Equals("..", StringComparison.Ordinal) ||
-            relativeToProject.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ||
-            !File.Exists(fullPath))
-        {
+        if (!_documentSymbols.TryGetValue(fullPath, out var symbols))
             return [];
-        }
 
-        try
-        {
-            return StructuredTextPouMemberParser.Parse(File.ReadAllText(fullPath))
-                .Select(group => new DeviceTreeNode(
-                    group.Name,
-                    DeviceIcons.Folder,
-                    group.Members.Select(member => new DeviceTreeNode(
-                        member.DisplayName,
-                        DeviceIcons.Settings,
-                        filePath: relativePath,
-                        location: new StrucppLocation(fullPath, member.Range),
-                        isTransient: true)).ToList(),
-                    false,
-                    isTransient: true))
-                .ToList();
-        }
-        catch (IOException)
-        {
-            return [];
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return [];
-        }
+        var visibleSymbols = symbols.Count == 1 && IsDocumentContainerSymbol(symbols[0])
+            ? symbols[0].Children
+            : symbols;
+        return visibleSymbols
+            .Select(symbol => CreateDocumentSymbolNode(symbol, relativePath, fullPath))
+            .ToList();
+    }
+
+    private static DeviceTreeNode CreateDocumentSymbolNode(
+        StrucppDocumentSymbol symbol,
+        string relativePath,
+        string fullPath) =>
+        new(
+            FormatDocumentSymbol(symbol),
+            GetDocumentSymbolIcon(symbol.Kind),
+            symbol.Children
+                .Select(child => CreateDocumentSymbolNode(child, relativePath, fullPath))
+                .ToList(),
+            false,
+            filePath: relativePath,
+            location: new StrucppLocation(fullPath, symbol.SelectionRange),
+            isTransient: true);
+
+    private static string FormatDocumentSymbol(StrucppDocumentSymbol symbol)
+    {
+        if (string.IsNullOrWhiteSpace(symbol.Detail))
+            return symbol.Name;
+
+        var detail = symbol.Detail.Trim();
+        return detail.StartsWith(':')
+            ? $"{symbol.Name} {detail}"
+            : $"{symbol.Name} ({detail})";
+    }
+
+    private static IImage GetDocumentSymbolIcon(int kind) => kind switch
+    {
+        2 or 3 or 4 => DeviceIcons.Folder,
+        5 or 6 or 9 or 11 or 12 or 23 => DeviceIcons.Program,
+        _ => DeviceIcons.Settings
+    };
+
+    private static bool IsDocumentContainerSymbol(StrucppDocumentSymbol symbol) =>
+        symbol.Detail?.Trim().ToUpperInvariant() is
+            "PROGRAM" or
+            "FUNCTION_BLOCK" or
+            "FUNCTION" or
+            "INTERFACE";
+
+    private static bool IsStructuredTextPath(string path)
+    {
+        var extension = Path.GetExtension(path);
+        return extension.Equals(".st", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".iecst", StringComparison.OrdinalIgnoreCase);
     }
 
     private static DeviceTreeNode CreateBuildNode(string projectDirectory)

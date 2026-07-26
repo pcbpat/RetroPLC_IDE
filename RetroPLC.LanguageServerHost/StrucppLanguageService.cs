@@ -183,6 +183,20 @@ public sealed class StrucppLanguageService : IStrucppLanguageService
             .ToArray();
     }
 
+    public async Task<IReadOnlyList<StrucppDocumentSymbol>> GetDocumentSymbolsAsync(
+        string filePath,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await Client.RequestAsync(
+            "textDocument/documentSymbol",
+            new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = ToFileUri(filePath) }
+            },
+            cancellationToken).ConfigureAwait(false);
+        return ParseDocumentSymbols(result);
+    }
+
     public async Task<IReadOnlyList<StrucppLocation>> GetDefinitionsAsync(
         string filePath,
         int line,
@@ -385,6 +399,10 @@ public sealed class StrucppLanguageService : IStrucppLanguageService
                 {
                     ["synchronization"] = new JsonObject { ["didSave"] = true },
                     ["publishDiagnostics"] = new JsonObject { ["versionSupport"] = true },
+                    ["documentSymbol"] = new JsonObject
+                    {
+                        ["hierarchicalDocumentSymbolSupport"] = true
+                    },
                     ["completion"] = new JsonObject
                     {
                         ["completionItem"] = new JsonObject { ["snippetSupport"] = true }
@@ -394,6 +412,55 @@ public sealed class StrucppLanguageService : IStrucppLanguageService
             },
             ["trace"] = "off"
         };
+
+    private static IReadOnlyList<StrucppDocumentSymbol> ParseDocumentSymbols(JsonNode? result)
+    {
+        if (result is not JsonArray symbols)
+            return [];
+
+        return DeduplicateDocumentSymbols(
+            symbols
+                .OfType<JsonObject>()
+                .Select(ParseDocumentSymbol));
+    }
+
+    private static StrucppDocumentSymbol ParseDocumentSymbol(JsonObject symbol)
+    {
+        var rangeNode = symbol["range"] as JsonObject ??
+                        symbol["location"]?["range"] as JsonObject ??
+                        throw new InvalidDataException(
+                            "The language server returned a document symbol without a range.");
+        var range = ParseRange(rangeNode);
+        var selectionRange = symbol["selectionRange"] is JsonObject selectionRangeNode
+            ? ParseRange(selectionRangeNode)
+            : range;
+        var children = symbol["children"] is JsonArray childNodes
+            ? DeduplicateDocumentSymbols(
+                childNodes
+                    .OfType<JsonObject>()
+                    .Select(ParseDocumentSymbol))
+            : [];
+
+        return new StrucppDocumentSymbol(
+            symbol["name"]?.GetValue<string>() ?? string.Empty,
+            symbol["detail"]?.GetValue<string>(),
+            symbol["kind"]?.GetValue<int>() ?? 1,
+            range,
+            selectionRange,
+            children);
+    }
+
+    private static IReadOnlyList<StrucppDocumentSymbol> DeduplicateDocumentSymbols(
+        IEnumerable<StrucppDocumentSymbol> symbols) =>
+        symbols
+            .DistinctBy(symbol => (
+                symbol.Name,
+                symbol.Kind,
+                symbol.SelectionRange.Start.Line,
+                symbol.SelectionRange.Start.Character,
+                symbol.SelectionRange.End.Line,
+                symbol.SelectionRange.End.Character))
+            .ToArray();
 
     private static JsonObject PositionParameters(
         string filePath,

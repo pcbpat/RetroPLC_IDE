@@ -49,6 +49,8 @@ public sealed class DockFactory : Factory
         new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _languageServerDocuments =
         new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, IReadOnlyList<StrucppDocumentSymbol>> _projectSymbols =
+        new(StringComparer.OrdinalIgnoreCase);
     private CancellationTokenSource? _languageServerCancellation;
 
     public DockFactory(MainWindowViewModel settings)
@@ -70,7 +72,10 @@ public sealed class DockFactory : Factory
             { Id = "Project", Title = "Project", CanPin = true };
         _projectTool = tool1;
         if (_currentProject is not null && _projectDirectory is not null)
+        {
             tool1.LoadProject(_currentProject, _projectDirectory);
+            tool1.SetDocumentSymbols(_currentProject, _projectDirectory, _projectSymbols);
+        }
         var tool2 = new ToolViewModel { Id = "Tool2", Title = "Tool2", CanPin = true };
         var tool3 = new ToolViewModel { Id = "Tool3", Title = "Tool3", CanPin = true };
         var tool4 = new ToolViewModel { Id = "Tool4", Title = "Tool4", CanPin = true };
@@ -272,6 +277,7 @@ public sealed class DockFactory : Factory
     {
         _currentProject = document;
         _projectDirectory = projectDirectory;
+        _projectSymbols.Clear();
         _projectTool?.LoadProject(document, projectDirectory);
         _messagesTool?.SetProject(document.Name, projectDirectory);
         ConfigureProjectWatcher(projectDirectory);
@@ -671,6 +677,7 @@ public sealed class DockFactory : Factory
 
             _diagnostics.Clear();
             _languageServerDocuments.Clear();
+            _projectSymbols.Clear();
             await _languageClient.StartAsync(projectDirectory, cancellationToken);
 
             foreach (var filePath in EnumerateStructuredTextFiles(projectDirectory))
@@ -685,6 +692,8 @@ public sealed class DockFactory : Factory
                 await _languageClient.OpenDocumentAsync(filePath, text, version, cancellationToken);
                 _languageServerDocuments.Add(filePath);
             }
+
+            await RefreshProjectSymbolsAsync(projectDirectory, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -700,12 +709,14 @@ public sealed class DockFactory : Factory
         }
     }
 
-    private async Task SynchronizeProjectSourcesAsync()
+    private async Task SynchronizeProjectSourcesAsync(
+        CancellationToken cancellationToken = default)
     {
-        if (_projectDirectory is null || !_languageClient.IsRunning)
+        var projectDirectory = _projectDirectory;
+        if (projectDirectory is null || !_languageClient.IsRunning)
             return;
 
-        var currentFiles = EnumerateStructuredTextFiles(_projectDirectory)
+        var currentFiles = EnumerateStructuredTextFiles(projectDirectory)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var removedFiles = _languageServerDocuments
             .Where(path => !currentFiles.Contains(path))
@@ -718,7 +729,7 @@ public sealed class DockFactory : Factory
         {
             foreach (var filePath in removedFiles)
             {
-                await _languageClient.CloseDocumentAsync(filePath);
+                await _languageClient.CloseDocumentAsync(filePath, cancellationToken);
                 _languageServerDocuments.Remove(filePath);
                 _diagnostics.Remove(filePath);
                 _messagesTool?.RemoveDiagnostics(filePath);
@@ -728,10 +739,13 @@ public sealed class DockFactory : Factory
             {
                 await _languageClient.OpenDocumentAsync(
                     filePath,
-                    await File.ReadAllTextAsync(filePath),
-                    version: 1);
+                    await File.ReadAllTextAsync(filePath, cancellationToken),
+                    version: 1,
+                    cancellationToken);
                 _languageServerDocuments.Add(filePath);
             }
+
+            await RefreshProjectSymbolsAsync(projectDirectory, cancellationToken);
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException or InvalidOperationException)
@@ -1045,6 +1059,7 @@ public sealed class DockFactory : Factory
         try
         {
             await _languageClient.ChangeDocumentAsync(filePath, text, version);
+            await RefreshDocumentSymbolsAsync(filePath);
         }
         catch (Exception exception) when (
             exception is IOException or InvalidOperationException or ObjectDisposedException)
@@ -1065,6 +1080,7 @@ public sealed class DockFactory : Factory
         try
         {
             await _languageClient.SaveDocumentAsync(filePath, text);
+            await RefreshDocumentSymbolsAsync(filePath);
         }
         catch (Exception exception) when (
             exception is IOException or InvalidOperationException or ObjectDisposedException)
@@ -1091,6 +1107,84 @@ public sealed class DockFactory : Factory
                 ?.SetDiagnostics(args.Diagnostics);
         });
 
+    private async Task RefreshProjectSymbolsAsync(
+        string projectDirectory,
+        CancellationToken cancellationToken)
+    {
+        var symbols = new Dictionary<string, IReadOnlyList<StrucppDocumentSymbol>>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var filePath in EnumerateStructuredTextFiles(projectDirectory))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                symbols[filePath] = await _languageClient.GetDocumentSymbolsAsync(
+                    filePath,
+                    cancellationToken);
+            }
+            catch (Exception exception) when (
+                exception is IOException or InvalidOperationException or
+                    InvalidDataException or ObjectDisposedException)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"Unable to read STruCpp document symbols for '{filePath}': {exception.Message}");
+            }
+        }
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            if (_currentProject is null ||
+                _projectDirectory is null ||
+                !string.Equals(
+                    Path.GetFullPath(_projectDirectory),
+                    Path.GetFullPath(projectDirectory),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            _projectSymbols.Clear();
+            foreach (var (filePath, documentSymbols) in symbols)
+                _projectSymbols[filePath] = documentSymbols;
+            _projectTool?.SetDocumentSymbols(
+                _currentProject,
+                _projectDirectory,
+                _projectSymbols);
+        });
+    }
+
+    private async Task RefreshDocumentSymbolsAsync(string filePath)
+    {
+        if (!_languageClient.IsRunning)
+            return;
+
+        try
+        {
+            var symbols = await _languageClient.GetDocumentSymbolsAsync(filePath);
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (_currentProject is null ||
+                    _projectDirectory is null ||
+                    !IsPathInsideProject(
+                        Path.GetFullPath(filePath),
+                        Path.GetFullPath(_projectDirectory)))
+                {
+                    return;
+                }
+
+                _projectSymbols[filePath] = symbols;
+                _projectTool?.SetDocumentSymbols(filePath, symbols);
+            });
+        }
+        catch (Exception exception) when (
+            exception is IOException or InvalidOperationException or
+                InvalidDataException or ObjectDisposedException)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"Unable to refresh STruCpp document symbols for '{filePath}': {exception.Message}");
+        }
+    }
+
     private static IEnumerable<string> EnumerateStructuredTextFiles(string projectDirectory)
     {
         var sourceRoot = Path.Combine(projectDirectory, "ProjectFiles");
@@ -1099,18 +1193,12 @@ public sealed class DockFactory : Factory
 
         return Directory.EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories)
             .Where(path => IsStructuredTextExtension(Path.GetExtension(path)))
-            .Where(path => !IsTestSource(Path.GetRelativePath(projectDirectory, path)))
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase);
     }
 
     private static bool IsStructuredTextExtension(string extension) =>
         extension.Equals(".st", StringComparison.OrdinalIgnoreCase) ||
         extension.Equals(".iecst", StringComparison.OrdinalIgnoreCase);
-
-    private static bool IsTestSource(string relativePath) =>
-        relativePath.StartsWith($"ProjectFiles{Path.DirectorySeparatorChar}Tests{Path.DirectorySeparatorChar}",
-            StringComparison.OrdinalIgnoreCase) ||
-        relativePath.StartsWith("ProjectFiles/Tests/", StringComparison.OrdinalIgnoreCase);
 
     public override IDockWindow? CreateWindowFrom(IDockable dockable)
     {

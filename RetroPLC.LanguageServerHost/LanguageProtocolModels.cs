@@ -32,6 +32,14 @@ public sealed record StrucppCompletionItem(
     string? InsertText,
     int InsertTextFormat);
 
+public sealed record StrucppDocumentSymbol(
+    string Name,
+    string? Detail,
+    int Kind,
+    StrucppRange Range,
+    StrucppRange SelectionRange,
+    IReadOnlyList<StrucppDocumentSymbol> Children);
+
 public sealed record StrucppPrepareRenameResult(
     StrucppRange Range,
     string Placeholder);

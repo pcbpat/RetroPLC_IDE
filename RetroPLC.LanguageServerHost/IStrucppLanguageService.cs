@@ -44,6 +44,10 @@ public interface IStrucppLanguageService : IAsyncDisposable
         string? triggerCharacter,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<StrucppDocumentSymbol>> GetDocumentSymbolsAsync(
+        string filePath,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<StrucppLocation>> GetDefinitionsAsync(
         string filePath,
         int line,
