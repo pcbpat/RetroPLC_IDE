@@ -12,19 +12,6 @@
 
     <Application.Resources>
         <ResourceDictionary>
-            <LinearGradientBrush x:Key="Win2000ActiveCaptionBrush"
-                                 StartPoint="0%,50%"
-                                 EndPoint="100%,50%">
-                <GradientStop Color="{DynamicResource {x:Static common:SystemColors.ActiveCaptionColorKey}}" Offset="0" />
-                <GradientStop Color="{DynamicResource {x:Static common:SystemColors.GradientActiveCaptionColorKey}}" Offset="1" />
-            </LinearGradientBrush>
-            <LinearGradientBrush x:Key="Win2000InactiveCaptionBrush"
-                                 StartPoint="0%,50%"
-                                 EndPoint="100%,50%">
-                <GradientStop Color="{DynamicResource {x:Static common:SystemColors.InactiveCaptionColorKey}}" Offset="0" />
-                <GradientStop Color="{DynamicResource {x:Static common:SystemColors.GradientInactiveCaptionColorKey}}" Offset="1" />
-            </LinearGradientBrush>
-
             <!-- Classic.Avalonia.Theme.Dock does not currently theme Dock 12's
                  drag-preview controls. Without these themes, the preview is a
                  large native window with the default title "Window". -->
@@ -78,34 +65,64 @@
             <Setter Property="Height" Value="{DynamicResource AvaloniaIDE_Test.StatusBarHeight}" />
         </Style>
         <Style Selector="ToolTabStripItem">
-            <Setter Property="MinHeight" Value="{DynamicResource AvaloniaIDE_Test.DockTabMinHeight}" />
+            <Setter Property="MinHeight" Value="{DynamicResource RetroPLC.Shell.DockTabMinHeight}" />
         </Style>
         <Style Selector="DocumentTabStripItem">
-            <Setter Property="MinHeight" Value="{DynamicResource AvaloniaIDE_Test.DockTabMinHeight}" />
+            <Setter Property="MinHeight" Value="{DynamicResource RetroPLC.Shell.DockTabMinHeight}" />
         </Style>
         <Style Selector="ToolChromeControl /template/ Button">
-            <Setter Property="Width" Value="{DynamicResource AvaloniaIDE_Test.DockButtonSize}" />
-            <Setter Property="Height" Value="{DynamicResource AvaloniaIDE_Test.DockButtonSize}" />
+            <Setter Property="Width" Value="{DynamicResource RetroPLC.Shell.DockButtonSize}" />
+            <Setter Property="Height" Value="{DynamicResource RetroPLC.Shell.DockButtonSize}" />
+            <Setter Property="Margin" Value="1,0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Background="{TemplateBinding Background}">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center" />
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="ToolChromeControl /template/ Button:pointerover">
+            <Setter Property="Background" Value="#20000000" />
+        </Style>
+        <Style Selector="ToolChromeControl /template/ Button:pressed">
+            <Setter Property="Background" Value="#40000000" />
         </Style>
         <Style Selector="DocumentTabStripItem /template/ Button#PART_CloseButton">
-            <Setter Property="Width" Value="{DynamicResource AvaloniaIDE_Test.DockButtonSize}" />
-            <Setter Property="Height" Value="{DynamicResource AvaloniaIDE_Test.DockButtonSize}" />
+            <Setter Property="Width" Value="{DynamicResource RetroPLC.Shell.DockButtonSize}" />
+            <Setter Property="Height" Value="{DynamicResource RetroPLC.Shell.DockButtonSize}" />
         </Style>
         <Style Selector="ToolChromeControl /template/ Path#PART_ClosePath">
-            <Setter Property="Width" Value="{DynamicResource AvaloniaIDE_Test.DockCloseGlyphWidth}" />
-            <Setter Property="Height" Value="{DynamicResource AvaloniaIDE_Test.DockCloseGlyphHeight}" />
+            <Setter Property="Width" Value="{DynamicResource RetroPLC.Shell.DockCloseGlyphWidth}" />
+            <Setter Property="Height" Value="{DynamicResource RetroPLC.Shell.DockCloseGlyphHeight}" />
         </Style>
         <Style Selector="DocumentTabStripItem /template/ Path#PART_ClosePath">
-            <Setter Property="Width" Value="{DynamicResource AvaloniaIDE_Test.DockCloseGlyphWidth}" />
-            <Setter Property="Height" Value="{DynamicResource AvaloniaIDE_Test.DockCloseGlyphHeight}" />
+            <Setter Property="Width" Value="{DynamicResource RetroPLC.Shell.DockCloseGlyphWidth}" />
+            <Setter Property="Height" Value="{DynamicResource RetroPLC.Shell.DockCloseGlyphHeight}" />
         </Style>
         <Style Selector="ToolChromeControl /template/ Path#PART_PinPath">
-            <Setter Property="Width" Value="{DynamicResource AvaloniaIDE_Test.DockPinGlyphWidth}" />
-            <Setter Property="Height" Value="{DynamicResource AvaloniaIDE_Test.DockPinGlyphHeight}" />
+            <Setter Property="Width" Value="{DynamicResource RetroPLC.Shell.DockPinGlyphWidth}" />
+            <Setter Property="Height" Value="{DynamicResource RetroPLC.Shell.DockPinGlyphHeight}" />
+            <Setter Property="MinWidth" Value="8" />
+            <Setter Property="MinHeight" Value="10" />
+            <Setter Property="Stretch" Value="Uniform" />
+            <Setter Property="UseLayoutRounding" Value="True" />
+        </Style>
+        <Style Selector="ToolChromeControl:pinned /template/ Path#PART_PinPath">
+            <Setter Property="Width" Value="{DynamicResource RetroPLC.Shell.DockPinGlyphHeight}" />
+            <Setter Property="Height" Value="{DynamicResource RetroPLC.Shell.DockPinGlyphWidth}" />
+            <Setter Property="MinWidth" Value="9" />
+            <Setter Property="MinHeight" Value="6" />
         </Style>
         <Style Selector="ToolChromeControl /template/ Path#PART_MenuPath">
-            <Setter Property="Width" Value="{DynamicResource AvaloniaIDE_Test.DockMenuGlyphWidth}" />
-            <Setter Property="Height" Value="{DynamicResource AvaloniaIDE_Test.DockMenuGlyphHeight}" />
+            <Setter Property="Width" Value="{DynamicResource RetroPLC.Shell.DockMenuGlyphWidth}" />
+            <Setter Property="Height" Value="{DynamicResource RetroPLC.Shell.DockMenuGlyphHeight}" />
         </Style>
         <Style Selector="MenuItem">
             <Setter Property="Height" Value="{DynamicResource AvaloniaIDE_Test.MenuItemHeight}" />
@@ -161,9 +178,9 @@
             </Setter>
         </Style>
 
-        <!-- Windows 2000-style dockable caption gradients. -->
-        <!-- ToolControl already supplies the pane outline. Removing the nested
-             caption's side borders lets its gradient span the pane width. -->
+        <!-- Flat dockable captions, matching the compact CODESYS-style panes.
+             ToolControl already supplies the pane outline, so the nested caption
+             and its icon buttons do not need raised borders. -->
         <Style Selector="ToolChromeControl /template/ Border#PART_Border">
             <Setter Property="BorderThickness" Value="0,1,0,0" />
         </Style>
@@ -171,13 +188,28 @@
             <Setter Property="BorderThickness" Value="0" />
         </Style>
         <Style Selector="ToolChromeControl /template/ Grid#PART_Grip">
-            <Setter Property="Background" Value="{StaticResource Win2000InactiveCaptionBrush}" />
+            <Setter Property="Background"
+                    Value="{DynamicResource {x:Static common:SystemColors.InactiveCaptionBrushKey}}" />
         </Style>
         <Style Selector="ToolChromeControl:active /template/ Grid#PART_Grip">
-            <Setter Property="Background" Value="{StaticResource Win2000ActiveCaptionBrush}" />
+            <Setter Property="Background"
+                    Value="{DynamicResource {x:Static common:SystemColors.ActiveCaptionBrushKey}}" />
         </Style>
         <Style Selector="ToolChromeControl /template/ TextBlock#PART_Title">
-            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Foreground"
+                    Value="{DynamicResource {x:Static common:SystemColors.InactiveCaptionTextBrushKey}}" />
+        </Style>
+        <Style Selector="ToolChromeControl:active /template/ TextBlock#PART_Title">
+            <Setter Property="Foreground"
+                    Value="{DynamicResource {x:Static common:SystemColors.ActiveCaptionTextBrushKey}}" />
+        </Style>
+        <Style Selector="ToolChromeControl /template/ Path">
+            <Setter Property="Fill"
+                    Value="{DynamicResource {x:Static common:SystemColors.InactiveCaptionTextBrushKey}}" />
+        </Style>
+        <Style Selector="ToolChromeControl:active /template/ Path">
+            <Setter Property="Fill"
+                    Value="{DynamicResource {x:Static common:SystemColors.ActiveCaptionTextBrushKey}}" />
         </Style>
 
         <!-- Classic.Avalonia.Theme.Dock 12.0.1-beta1 does not assign docking

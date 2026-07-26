@@ -10,7 +10,7 @@ namespace RetroPLC.Shell.Models;
 internal static class StructuredTextPouMemberParser
 {
     private static readonly Regex SupportedPouDeclaration = new(
-        @"^[\t ]*(?:FUNCTION_BLOCK|FUNCTION|INTERFACE)\b",
+        @"^[\t ]*(?:PROGRAM|FUNCTION_BLOCK|FUNCTION|INTERFACE)\b",
         RegexOptions.IgnoreCase | RegexOptions.Multiline);
 
     private static readonly Regex VariableBlockStart = new(
