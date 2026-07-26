@@ -1,0 +1,29 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RetroPLC.Shell.ViewModels.Docking"
+             xmlns:controls="using:RetroPLC.Shell.Controls"
+             xmlns:commonControls="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia"
+             x:Class="RetroPLC.Shell.Views.Docking.BuildView"
+             x:DataType="vm:BuildViewModel">
+    <UserControl.Styles>
+        <Style Selector="controls|ReadOnlyDockTerminalView">
+            <Setter Property="FontFamily" Value="Cascadia Mono,Consolas,DejaVu Sans Mono,Monospace" />
+            <Setter Property="FontSize" Value="{DynamicResource AvaloniaIDE_Test.CodeTextSize}" />
+            <Setter Property="BufferSize" Value="5000" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+            <Setter Property="Background" Value="{DynamicResource {x:Static commonControls:SystemColors.WindowBrushKey}}" />
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static commonControls:SystemColors.WindowTextBrushKey}}" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid ColumnDefinitions="*,Auto">
+        <ContentControl Content="{Binding Session.Terminal}" />
+        <ScrollBar Grid.Column="1"
+                   Orientation="Vertical"
+                   AllowAutoHide="False"
+                   Maximum="{Binding Session.Terminal.MaxScrollback}"
+                   ViewportSize="{Binding Session.Terminal.ViewportLines}"
+                   Value="{Binding Session.Terminal.ViewportY}"
+                   Scroll="TerminalScrollBar_OnScroll" />
+    </Grid>
+</UserControl>

@@ -1,0 +1,55 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RetroPLC.Shell.ViewModels.Docking"
+             xmlns:common="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia"
+             x:Class="RetroPLC.Shell.Views.Docking.DevicesView"
+             x:DataType="vm:DevicesViewModel">
+    <UserControl.Styles>
+        <Style Selector="TreeView">
+            <Setter Property="Padding" Value="2"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+        <Style Selector="TreeViewItem">
+            <Setter Property="IsExpanded" Value="{ReflectionBinding IsExpanded}"/>
+            <Setter Property="MinHeight" Value="19"/>
+            <Setter Property="Padding" Value="0"/>
+        </Style>
+    </UserControl.Styles>
+
+    <TreeView ItemsSource="{Binding Nodes}"
+              HorizontalAlignment="Stretch"
+              VerticalAlignment="Stretch">
+        <TreeView.ContextMenu>
+            <ContextMenu>
+                <MenuItem Header="Add _POU..." Click="AddPou_OnClick" />
+                <Separator />
+                <MenuItem Header="Import _CODESYS Library..."
+                          Click="ImportCodesysLibrary_OnClick" />
+            </ContextMenu>
+        </TreeView.ContextMenu>
+        <!-- The ClassicTheme connector template resolves ControlDark from the
+             TreeView's resource scope. Use GrayText here so dotted branches
+             remain visible against both light and dark window backgrounds. -->
+        <TreeView.Resources>
+            <SolidColorBrush x:Key="{x:Static common:SystemColors.ControlDarkBrushKey}"
+                             Color="{DynamicResource {x:Static common:SystemColors.GrayTextColorKey}}"/>
+        </TreeView.Resources>
+        <TreeView.ItemTemplate>
+            <TreeDataTemplate DataType="vm:DeviceTreeNode"
+                              ItemsSource="{Binding Children}"
+                              x:DataType="vm:DeviceTreeNode">
+                <StackPanel Orientation="Horizontal"
+                            Spacing="3"
+                            DoubleTapped="TreeNode_OnDoubleTapped">
+                    <Image Width="16"
+                           Height="16"
+                           Stretch="None"
+                           RenderOptions.BitmapInterpolationMode="None"
+                           Source="{Binding Icon}"/>
+                    <TextBlock VerticalAlignment="Center"
+                               Text="{Binding Name}"/>
+                </StackPanel>
+            </TreeDataTemplate>
+        </TreeView.ItemTemplate>
+    </TreeView>
+</UserControl>

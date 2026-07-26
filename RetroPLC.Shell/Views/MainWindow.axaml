@@ -1,0 +1,407 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:RetroPLC.Shell.ViewModels"
+        xmlns:behaviors="using:RetroPLC.Shell.Controls"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:commonControls="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        x:Class="RetroPLC.Shell.Views.MainWindow"
+        x:Name="MainWindowView"
+        x:DataType="vm:MainWindowViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="ConceptPLC IDE"
+        KeyDown="MainWindow_OnKeyDown"
+        FontSize="{Binding TextSize}"
+        Width="1100"
+        Height="680">
+
+    <Design.DataContext>
+        <!-- This only sets the DataContext for the previewer in an IDE,
+             to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
+        <vm:MainWindowViewModel/>
+    </Design.DataContext>
+
+    <Grid RowDefinitions="Auto,*,Auto">
+        <StackPanel>
+            <Menu Margin="1,1,1,0">
+                <MenuItem Header="_File">
+                    <MenuItem Header="_New Project..." InputGesture="Ctrl+N" Click="NewProject_OnClick" />
+                    <MenuItem Header="_Open Project/Solution..." InputGesture="Ctrl+O" Click="OpenProject_OnClick" />
+                    <MenuItem Header="Open Project from _Target..." IsEnabled="False" />
+                    <MenuItem Header="Open Solution from _Archive..." IsEnabled="False" />
+                    <MenuItem Header="Add New Project..." IsEnabled="False" />
+                    <MenuItem Header="Add Existing Item..." IsEnabled="False" />
+                    <MenuItem Header="Recent Projects and Solutions" IsEnabled="False" />
+                    <Separator />
+                    <MenuItem Header="_Save"
+                              InputGesture="Ctrl+S"
+                              Command="{Binding SaveActiveDocumentCommand}" />
+                    <MenuItem Header="Save _All"
+                              InputGesture="Ctrl+Shift+S"
+                              Command="{Binding SaveAllDocumentsCommand}" />
+                    <MenuItem Header="Save Solution _As..." IsEnabled="False" />
+                    <MenuItem Header="Save Solution as Archive..." IsEnabled="False" />
+                    <MenuItem Header="Save PLC Project As..." IsEnabled="False" />
+                    <MenuItem Header="Save PLC Project as Archive..." IsEnabled="False" />
+                    <Separator />
+                    <MenuItem Header="Send by _E-Mail..." IsEnabled="False" />
+                    <MenuItem Header="Close Solution" IsEnabled="False" />
+                    <MenuItem Header="Close" IsEnabled="False" />
+                    <Separator />
+                    <MenuItem Header="Page Set_up..." IsEnabled="False" />
+                    <MenuItem Header="_Print..." InputGesture="Ctrl+P" IsEnabled="False" />
+                    <Separator />
+                    <MenuItem Header="E_xit" Click="Exit_OnClick" />
+                </MenuItem>
+
+                <MenuItem Header="_Edit">
+                    <MenuItem Header="_Undo" InputGesture="Ctrl+Z" IsEnabled="False" />
+                    <MenuItem Header="_Redo" InputGesture="Ctrl+Y" IsEnabled="False" />
+                    <Separator />
+                    <MenuItem Header="Cu_t" InputGesture="Ctrl+X" IsEnabled="False" />
+                    <MenuItem Header="_Copy" InputGesture="Ctrl+C" IsEnabled="False" />
+                    <MenuItem Header="_Paste" InputGesture="Ctrl+V" IsEnabled="False" />
+                    <MenuItem Header="_Delete" InputGesture="Delete" IsEnabled="False" />
+                    <MenuItem Header="Select _All" InputGesture="Ctrl+A" IsEnabled="False" />
+                    <Separator />
+                    <MenuItem Header="Input Assistant..." IsEnabled="False" />
+                    <MenuItem Header="Auto Declare..." IsEnabled="False" />
+                    <MenuItem Header="Go To..." InputGesture="Ctrl+G" IsEnabled="False" />
+                    <MenuItem Header="Go To Definition"
+                              InputGesture="F12"
+                              Command="{Binding GoToDefinitionCommand}" />
+                    <MenuItem Header="Find All References"
+                              InputGesture="Shift+F12"
+                              Command="{Binding FindReferencesCommand}" />
+                    <MenuItem Header="Navigate To..." IsEnabled="False" />
+                    <Separator />
+                    <MenuItem Header="Make Uppercase" IsEnabled="False" />
+                    <MenuItem Header="Make Lowercase" IsEnabled="False" />
+                    <MenuItem Header="View White Spaces" IsEnabled="False" />
+                    <MenuItem Header="Quick Find..." InputGesture="Ctrl+F" IsEnabled="False" />
+                    <MenuItem Header="Quick Replace..." InputGesture="Ctrl+H" IsEnabled="False" />
+                    <MenuItem Header="Switch Write Mode" IsEnabled="False" />
+                    <Separator />
+                    <MenuItem Header="Rename..."
+                              InputGesture="F2"
+                              Command="{Binding RenameSymbolCommand}" />
+                    <MenuItem Header="Add Variable..." IsEnabled="False" />
+                    <MenuItem Header="Remove Variable..." IsEnabled="False" />
+                    <MenuItem Header="Reorder Variables..." IsEnabled="False" />
+                </MenuItem>
+
+                <MenuItem Header="_View">
+                    <MenuItem Header="Open Object..." IsEnabled="False" />
+                    <MenuItem Header="Tabular View" IsEnabled="False" />
+                    <MenuItem Header="Textual View" IsEnabled="False" />
+                    <MenuItem Header="Full Screen" InputGesture="Shift+Alt+Enter" Click="FullScreen_OnClick" />
+                    <Separator />
+                    <MenuItem Header="Toolbars" IsEnabled="False" />
+                    <MenuItem Header="Solution Explorer" IsEnabled="False" />
+                    <MenuItem Header="Properties Window" IsEnabled="False" />
+                    <MenuItem Header="_Appearance"
+                              Command="{Binding OpenAppearanceCommand}" />
+                    <MenuItem Header="Toolbox" IsEnabled="False" />
+                    <MenuItem Header="Error List" IsEnabled="False" />
+                    <MenuItem Header="Output" IsEnabled="False" />
+                    <Separator />
+                    <MenuItem Header="New _Terminal"
+                              InputGesture="Ctrl+OemTilde"
+                              Command="{Binding OpenTerminalCommand}" />
+                </MenuItem>
+
+                <MenuItem Header="_Project">
+                    <MenuItem Header="Add _POU..."
+                              IsEnabled="{Binding IsProjectOpen}"
+                              Click="AddPou_OnClick" />
+                    <MenuItem Header="Add New Item..." IsEnabled="False" />
+                    <MenuItem Header="Add Existing Item..." IsEnabled="False" />
+                    <MenuItem Header="Add New Object..." IsEnabled="False" />
+                    <Separator />
+                    <MenuItem Header="Export to ZIP..." IsEnabled="False" />
+                    <MenuItem Header="Import from ZIP..." IsEnabled="False" />
+                    <MenuItem Header="Export PLCopenXML..." IsEnabled="False" />
+                    <MenuItem Header="Import PLCopenXML..." IsEnabled="False" />
+                    <MenuItem Header="Import CODESYS Library..."
+                              IsEnabled="{Binding IsProjectOpen}"
+                              Click="ImportCodesysLibrary_OnClick" />
+                    <Separator />
+                    <MenuItem Header="New Folder" IsEnabled="False" />
+                    <MenuItem Header="Object Properties..." IsEnabled="False" />
+                    <MenuItem Header="PLC Project Settings..." IsEnabled="False" />
+                </MenuItem>
+
+                <MenuItem Header="_Build">
+                    <MenuItem Header="Build PLC Project" InputGesture="F7" Command="{Binding BuildCommand}" />
+                    <MenuItem Header="Rebuild PLC Project" IsEnabled="False" />
+                    <MenuItem Header="Clean PLC Project" IsEnabled="False" />
+                    <Separator />
+                    <MenuItem Header="Build Solution" Command="{Binding BuildCommand}" />
+                    <MenuItem Header="Rebuild Solution" IsEnabled="False" />
+                    <MenuItem Header="Clean Solution" IsEnabled="False" />
+                    <Separator />
+                    <MenuItem Header="Check All Objects" Command="{Binding BuildCommand}" />
+                </MenuItem>
+
+                <MenuItem Header="_Debug">
+                    <MenuItem Header="New Breakpoint" InputGesture="F9" IsEnabled="False" />
+                    <MenuItem Header="Edit Breakpoint..." IsEnabled="False" />
+                    <MenuItem Header="Enable Breakpoint" IsEnabled="False" />
+                    <MenuItem Header="Disable Breakpoint" IsEnabled="False" />
+                    <MenuItem Header="Toggle Breakpoint" IsEnabled="False" />
+                    <Separator />
+                    <MenuItem Header="Step Over" InputGesture="F10" IsEnabled="False" />
+                    <MenuItem Header="Step Into" InputGesture="F11" IsEnabled="False" />
+                    <MenuItem Header="Step Out" InputGesture="Shift+F11" IsEnabled="False" />
+                    <MenuItem Header="Show Next Statement" IsEnabled="False" />
+                    <MenuItem Header="Run To Cursor" IsEnabled="False" />
+                </MenuItem>
+
+                <MenuItem Header="P_LC">
+                    <MenuItem Header="Breakpoints" IsEnabled="False" />
+                    <MenuItem Header="Find All References"
+                              InputGesture="Shift+F12"
+                              Command="{Binding FindReferencesCommand}" />
+                    <MenuItem Header="Cross Reference List" IsEnabled="False" />
+                    <MenuItem Header="Call Stack" IsEnabled="False" />
+                    <MenuItem Header="Call Tree" IsEnabled="False" />
+                    <MenuItem Header="Browse Call Tree" IsEnabled="False" />
+                    <Separator />
+                    <MenuItem Header="Watch List">
+                        <MenuItem Header="Watch 1" IsEnabled="False" />
+                        <MenuItem Header="Watch 2" IsEnabled="False" />
+                        <MenuItem Header="Watch 3" IsEnabled="False" />
+                        <MenuItem Header="Watch 4" IsEnabled="False" />
+                    </MenuItem>
+                    <MenuItem Header="Watch All Forces" IsEnabled="False" />
+                    <MenuItem Header="Add to Watch" IsEnabled="False" />
+                    <Separator />
+                    <MenuItem Header="Go Online" Command="{Binding GoOnlineCommand}" />
+                    <MenuItem Header="Go Offline" Command="{Binding GoOfflineCommand}" />
+                    <MenuItem Header="Login" Command="{Binding LoginCommand}" />
+                    <MenuItem Header="Logout" Command="{Binding LogoutCommand}" />
+                    <MenuItem Header="Download" Command="{Binding DownloadCommand}" />
+                    <MenuItem Header="Online Change" IsEnabled="False" />
+                    <Separator />
+                    <MenuItem Header="Start" Command="{Binding RunCommand}" />
+                    <MenuItem Header="Stop" Command="{Binding StopCommand}" />
+                    <MenuItem Header="Single Cycle" IsEnabled="False" />
+                    <MenuItem Header="Reset Cold" Command="{Binding ResetPlcCommand}" />
+                    <MenuItem Header="Reset Origin" Command="{Binding ResetPlcCommand}" />
+                    <Separator />
+                    <MenuItem Header="Force Values" IsEnabled="False" />
+                    <MenuItem Header="Write Values" IsEnabled="False" />
+                    <MenuItem Header="Unforce Values" IsEnabled="False" />
+                    <MenuItem Header="Switch Flow Control Mode" IsEnabled="False" />
+                    <MenuItem Header="Display Mode">
+                        <MenuItem Header="Binary" IsEnabled="False" />
+                        <MenuItem Header="Decimal" IsEnabled="False" />
+                        <MenuItem Header="Hexadecimal" IsEnabled="False" />
+                    </MenuItem>
+                    <Separator />
+                    <MenuItem Header="Create Localization Template..." IsEnabled="False" />
+                    <MenuItem Header="Manage Localization..." IsEnabled="False" />
+                    <MenuItem Header="Toggle Localization" IsEnabled="False" />
+                    <MenuItem Header="Active PLC Project" IsEnabled="False" />
+                    <MenuItem Header="Active PLC Instance" IsEnabled="False" />
+                    <MenuItem Header="Show Memory View" IsEnabled="False" />
+                </MenuItem>
+
+                <MenuItem Header="_Tools">
+                    <MenuItem Header="_Options..." IsEnabled="False" />
+                    <MenuItem Header="_Customize..." IsEnabled="False" />
+                </MenuItem>
+
+                <MenuItem Header="_Window">
+                    <MenuItem Header="Float" IsEnabled="False" />
+                    <MenuItem Header="Dock" IsEnabled="False" />
+                    <MenuItem Header="Hide" IsEnabled="False" />
+                    <MenuItem Header="Auto Hide All" IsEnabled="False" />
+                    <MenuItem Header="Auto Hide" IsEnabled="False" />
+                    <MenuItem Header="Pin Tab" IsEnabled="False" />
+                    <Separator />
+                    <MenuItem Header="New Horizontal Tab Group" IsEnabled="False" />
+                    <MenuItem Header="New Vertical Tab Group" IsEnabled="False" />
+                    <MenuItem Header="Reset Window Layout" Command="{Binding ResetLayoutCommand}" />
+                    <MenuItem Header="Close All Documents" Command="{Binding CloseAllDocumentsCommand}" />
+                    <Separator />
+                    <MenuItem Header="Windows..." IsEnabled="False" />
+                </MenuItem>
+
+                <MenuItem Header="_Help">
+                    <MenuItem Header="_About ConceptPLC IDE" Click="About_OnClick" />
+                </MenuItem>
+            </Menu>
+
+            <Separator Height="2" Margin="0,-1,0,0" />
+
+            <!-- PLC command bar, based on Classic.Avalonia's Internet Explorer
+                 toolbar sample. The paired 16/24px bitmap icons remain crisp. -->
+            <commonControls:ToolBar Size="Large"
+                                    TextPlacement="Down"
+                                    GrayscaleIcons="True">
+                <commonControls:RebarHandle />
+                <commonControls:ToolBarButton Text="Go Online"
+                                              LargeIcon="/Assets/Icons/Chicago95/online24.png"
+                                              SmallIcon="/Assets/Icons/Chicago95/online16.png"
+                                              Command="{Binding GoOnlineCommand}" />
+                <commonControls:ToolBarButton Text="Go Offline"
+                                              LargeIcon="/Assets/Icons/Chicago95/offline24.png"
+                                              SmallIcon="/Assets/Icons/Chicago95/offline16.png"
+                                              Command="{Binding GoOfflineCommand}" />
+                <commonControls:ToolBarButton Text="Login"
+                                              LargeIcon="/Assets/Icons/Chicago95/login24.png"
+                                              SmallIcon="/Assets/Icons/Chicago95/login16.png"
+                                              Command="{Binding LoginCommand}" />
+                <Separator />
+                <commonControls:ToolBarButton Text="Run"
+                                              LargeIcon="/Assets/Icons/Chicago95/run24.png"
+                                              SmallIcon="/Assets/Icons/Chicago95/run16.png"
+                                              Command="{Binding RunCommand}" />
+                <commonControls:ToolBarButton Text="Stop"
+                                              LargeIcon="/Assets/Icons/Chicago95/stop24.png"
+                                              SmallIcon="/Assets/Icons/Chicago95/stop16.png"
+                                              Command="{Binding StopCommand}" />
+                <commonControls:ToolBarButton Text="Reset"
+                                              LargeIcon="/Assets/Icons/Chicago95/reset24.png"
+                                              SmallIcon="/Assets/Icons/Chicago95/reset16.png"
+                                              Command="{Binding ResetPlcCommand}" />
+                <Separator />
+                <commonControls:ToolBarButton Text="Build"
+                                              LargeIcon="/Assets/Icons/Chicago95/build24.png"
+                                              SmallIcon="/Assets/Icons/Chicago95/build16.png"
+                                              Command="{Binding BuildCommand}" />
+                <commonControls:ToolBarButton Text="Download"
+                                              LargeIcon="/Assets/Icons/Chicago95/download24.png"
+                                              SmallIcon="/Assets/Icons/Chicago95/download16.png"
+                                              Command="{Binding DownloadCommand}" />
+                <Separator />
+                <commonControls:ToolBarButton Text="Reset Layout"
+                                              LargeIcon="/Assets/Icons/Chicago95/layout24.png"
+                                              SmallIcon="/Assets/Icons/Chicago95/layout16.png"
+                                              Command="{Binding ResetLayoutCommand}" />
+                <commonControls:ToolBarButton Text="Terminal"
+                                              LargeIcon="/Assets/Icons/Chicago95/terminal24.png"
+                                              SmallIcon="/Assets/Icons/Chicago95/terminal16.png"
+                                              Command="{Binding OpenTerminalCommand}" />
+                <Separator />
+                <commonControls:ToolBarButton Text="About"
+                                              LargeIcon="/Assets/Icons/Chicago95/about24.png"
+                                              SmallIcon="/Assets/Icons/Chicago95/about16.png"
+                                              Click="About_OnClick" />
+            </commonControls:ToolBar>
+
+            <Separator />
+        </StackPanel>
+
+        <Grid Grid.Row="1">
+            <!-- No dock layout is created until a project is opened. -->
+            <Border IsVisible="{Binding !IsProjectOpen}"
+                    Background="{DynamicResource {x:Static commonControls:SystemColors.WindowBrushKey}}">
+                <ClassicBorderDecorator Width="430"
+                                        Height="220"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        Padding="2"
+                                        BorderStyle="AltRaised"
+                                        BorderThickness="2"
+                                        Background="{DynamicResource {x:Static commonControls:SystemColors.ControlBrushKey}}">
+                    <Grid RowDefinitions="24,*">
+                        <!-- A window-style caption without system buttons. -->
+                        <Border Grid.Row="0"
+                                Padding="6,0"
+                                Background="{StaticResource Win2000ActiveCaptionBrush}">
+                            <TextBlock VerticalAlignment="Center"
+                                       FontFamily="{DynamicResource {x:Static commonControls:NonClientMetrics.CaptionFontKey}}"
+                                       FontSize="{DynamicResource {x:Static commonControls:NonClientMetrics.CaptionFontSizeKey}}"
+                                       FontWeight="Bold"
+                                       Foreground="{DynamicResource {x:Static commonControls:SystemColors.ActiveCaptionTextBrushKey}}"
+                                       Text="Welcome to ConceptPLC IDE" />
+                        </Border>
+
+                        <StackPanel Grid.Row="1"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Spacing="12">
+                            <Button Width="170"
+                                    Height="36"
+                                    HorizontalContentAlignment="Center"
+                                    Content="New Project"
+                                    Click="NewProject_OnClick" />
+                            <Button Width="170"
+                                    Height="36"
+                                    HorizontalContentAlignment="Center"
+                                    Content="Open Project..."
+                                    Click="OpenProject_OnClick" />
+                        </StackPanel>
+                    </Grid>
+                </ClassicBorderDecorator>
+            </Border>
+
+            <DockControl IsVisible="{Binding IsProjectOpen}"
+                         behaviors:PinnedDockHoverBehavior.IsEnabled="True"
+                         Layout="{Binding Layout}"/>
+        </Grid>
+
+        <commonControls:StatusBar Grid.Row="2"
+                                  Height="{DynamicResource AvaloniaIDE_Test.StatusBarHeight}"
+                                  Margin="0,2,0,0">
+            <commonControls:StatusBarItem commonControls:StatusBar.Size="2*">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Margin="2,0,6,0"
+                               VerticalAlignment="Center"
+                               FontWeight="Bold"
+                               Text="Target:" />
+                    <TextBlock VerticalAlignment="Center"
+                               Text="PLC_1 [192.168.0.10]" />
+                </StackPanel>
+            </commonControls:StatusBarItem>
+
+            <commonControls:StatusBarItem commonControls:StatusBar.Size="3*">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Margin="2,0,6,0"
+                               VerticalAlignment="Center"
+                               FontWeight="Bold"
+                               Text="Status:" />
+                    <TextBlock VerticalAlignment="Center"
+                               Text="{Binding PlcStatus}" />
+                </StackPanel>
+            </commonControls:StatusBarItem>
+
+            <commonControls:StatusBarItem commonControls:StatusBar.Size="20" Padding="0">
+                <!-- Windows 95/2000-style embossed sizing dots. -->
+                <Canvas Width="18"
+                        Height="18"
+                        Cursor="BottomRightCorner"
+                        PointerPressed="ResizeGrip_OnPointerPressed">
+                    <Rectangle Canvas.Left="13" Canvas.Top="3" Width="2" Height="2"
+                               Fill="{DynamicResource {x:Static commonControls:SystemColors.ControlLightLightBrushKey}}" />
+                    <Rectangle Canvas.Left="14" Canvas.Top="4" Width="2" Height="2"
+                               Fill="{DynamicResource {x:Static commonControls:SystemColors.ControlDarkDarkBrushKey}}" />
+                    <Rectangle Canvas.Left="9" Canvas.Top="7" Width="2" Height="2"
+                               Fill="{DynamicResource {x:Static commonControls:SystemColors.ControlLightLightBrushKey}}" />
+                    <Rectangle Canvas.Left="10" Canvas.Top="8" Width="2" Height="2"
+                               Fill="{DynamicResource {x:Static commonControls:SystemColors.ControlDarkDarkBrushKey}}" />
+                    <Rectangle Canvas.Left="13" Canvas.Top="7" Width="2" Height="2"
+                               Fill="{DynamicResource {x:Static commonControls:SystemColors.ControlLightLightBrushKey}}" />
+                    <Rectangle Canvas.Left="14" Canvas.Top="8" Width="2" Height="2"
+                               Fill="{DynamicResource {x:Static commonControls:SystemColors.ControlDarkDarkBrushKey}}" />
+                    <Rectangle Canvas.Left="5" Canvas.Top="11" Width="2" Height="2"
+                               Fill="{DynamicResource {x:Static commonControls:SystemColors.ControlLightLightBrushKey}}" />
+                    <Rectangle Canvas.Left="6" Canvas.Top="12" Width="2" Height="2"
+                               Fill="{DynamicResource {x:Static commonControls:SystemColors.ControlDarkDarkBrushKey}}" />
+                    <Rectangle Canvas.Left="9" Canvas.Top="11" Width="2" Height="2"
+                               Fill="{DynamicResource {x:Static commonControls:SystemColors.ControlLightLightBrushKey}}" />
+                    <Rectangle Canvas.Left="10" Canvas.Top="12" Width="2" Height="2"
+                               Fill="{DynamicResource {x:Static commonControls:SystemColors.ControlDarkDarkBrushKey}}" />
+                    <Rectangle Canvas.Left="13" Canvas.Top="11" Width="2" Height="2"
+                               Fill="{DynamicResource {x:Static commonControls:SystemColors.ControlLightLightBrushKey}}" />
+                    <Rectangle Canvas.Left="14" Canvas.Top="12" Width="2" Height="2"
+                               Fill="{DynamicResource {x:Static commonControls:SystemColors.ControlDarkDarkBrushKey}}" />
+                </Canvas>
+            </commonControls:StatusBarItem>
+        </commonControls:StatusBar>
+    </Grid>
+
+</Window>

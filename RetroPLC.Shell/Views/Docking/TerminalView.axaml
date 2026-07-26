@@ -1,0 +1,31 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RetroPLC.Shell.ViewModels.Docking"
+             xmlns:controls="using:RetroPLC.Shell.Controls"
+             xmlns:commonControls="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia"
+             x:Class="RetroPLC.Shell.Views.Docking.TerminalView"
+             x:DataType="vm:TerminalViewModel">
+    <UserControl.Styles>
+        <Style Selector="controls|DockTerminalView">
+            <Setter Property="FontFamily" Value="Cascadia Mono,Consolas,DejaVu Sans Mono,Monospace" />
+            <Setter Property="FontSize" Value="{DynamicResource AvaloniaIDE_Test.CodeTextSize}" />
+            <Setter Property="BufferSize" Value="5000" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+            <Setter Property="Background" Value="{DynamicResource {x:Static commonControls:SystemColors.WindowBrushKey}}" />
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static commonControls:SystemColors.WindowTextBrushKey}}" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid ColumnDefinitions="*,Auto">
+        <!-- Dock can recreate this surrounding view, but each view model keeps
+             the same terminal renderer, PTY process, and scrollback buffer. -->
+        <ContentControl Content="{Binding Terminal}" />
+        <ScrollBar Grid.Column="1"
+                   Orientation="Vertical"
+                   AllowAutoHide="False"
+                   Maximum="{Binding Terminal.MaxScrollback}"
+                   ViewportSize="{Binding Terminal.ViewportLines}"
+                   Value="{Binding Terminal.ViewportY}"
+                   Scroll="TerminalScrollBar_OnScroll" />
+    </Grid>
+</UserControl>

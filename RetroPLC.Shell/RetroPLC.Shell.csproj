@@ -1,0 +1,41 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>WinExe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ApplicationManifest>app.manifest</ApplicationManifest>
+        <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+        <RootNamespace>AvaloniaIDE_Test</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Folder Include="Models\"/>
+        <AvaloniaResource Include="Assets\**"
+                          Exclude="Assets\Syntax\*.tmLanguage.json;Assets\Syntax\LICENSE.vscode-textmate.txt"/>
+        <Content Include="Assets\Syntax\*.tmLanguage.json;Assets\Syntax\LICENSE.vscode-textmate.txt">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        </Content>
+        <Content Include="ProjectFiles\**\*.st">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\RetroPLC.LanguageServerHost\RetroPLC.LanguageServerHost.csproj" />
+        <PackageReference Include="Avalonia" Version="12.0.3"/>
+        <PackageReference Include="Avalonia.Desktop" Version="12.0.3"/>
+        <PackageReference Include="Avalonia.Fonts.Inter" Version="12.0.3"/>
+        <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.1">
+            <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
+            <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
+        </PackageReference>
+        <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.1"/>
+        <PackageReference Include="Avalonia.AvaloniaEdit" Version="12.0.0"/>
+        <PackageReference Include="AvaloniaEdit.TextMate" Version="12.0.0"/>
+        <PackageReference Include="Classic.Avalonia.Theme.Dock" Version="12.0.1-beta1"/>
+        <PackageReference Include="Dock.Avalonia" Version="12.0.0.2"/>
+        <PackageReference Include="Dock.Model.Mvvm" Version="12.0.0.2"/>
+        <PackageReference Include="Iciclecreek.Avalonia.Terminal" Version="2.0.3"/>
+    </ItemGroup>
+</Project>

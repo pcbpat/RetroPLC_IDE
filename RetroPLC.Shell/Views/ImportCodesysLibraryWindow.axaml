@@ -1,0 +1,69 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:common="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia"
+        x:Class="RetroPLC.Shell.Views.ImportCodesysLibraryWindow"
+        Title="Import CODESYS Library"
+        Icon="/Assets/Icons/Chicago95/library.png"
+        Width="540"
+        Height="330"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+    <Window.Styles>
+        <Style Selector="TextBox">
+            <Setter Property="CaretBrush"
+                    Value="{DynamicResource {x:Static common:SystemColors.WindowTextBrushKey}}" />
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="Auto,1,*,Auto">
+        <Grid Margin="18,15" ColumnDefinitions="42,*">
+            <Image Width="32" Height="32"
+                   VerticalAlignment="Center"
+                   RenderOptions.BitmapInterpolationMode="None"
+                   Source="/Assets/Icons/Chicago95/library.png" />
+            <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center"
+                       Text="Convert a CODESYS library to an STruCpp .stlib" />
+        </Grid>
+
+        <Border Grid.Row="1"
+                Background="{DynamicResource {x:Static common:SystemColors.ControlDarkBrushKey}}" />
+
+        <Grid Grid.Row="2" Margin="18,14"
+              ColumnDefinitions="120,*"
+              RowDefinitions="Auto,Auto,Auto,Auto,Auto"
+              RowSpacing="9">
+            <TextBlock VerticalAlignment="Center" Text="Source library:" />
+            <TextBox x:Name="SourceBox" Grid.Column="1" IsReadOnly="True" />
+
+            <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="Library name:" />
+            <TextBox x:Name="NameBox" Grid.Row="1" Grid.Column="1"
+                     TextChanged="Input_OnChanged" />
+
+            <TextBlock Grid.Row="2" VerticalAlignment="Center" Text="Version:" />
+            <TextBox x:Name="VersionBox" Grid.Row="2" Grid.Column="1"
+                     Text="1.0.0" TextChanged="Input_OnChanged" />
+
+            <TextBlock Grid.Row="3" VerticalAlignment="Center" Text="Namespace:" />
+            <TextBox x:Name="NamespaceBox" Grid.Row="3" Grid.Column="1"
+                     PlaceholderText="Optional" />
+
+            <CheckBox x:Name="IncludeSourceBox" Grid.Row="4" Grid.Column="1"
+                      IsChecked="True" Content="Include source in generated library" />
+        </Grid>
+
+        <Border Grid.Row="3" Padding="12,10"
+                BorderBrush="{DynamicResource {x:Static common:SystemColors.ControlDarkBrushKey}}"
+                BorderThickness="0,1,0,0">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock x:Name="ValidationText" VerticalAlignment="Center"
+                           Foreground="{DynamicResource {x:Static common:SystemColors.HotTrackBrushKey}}" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Button x:Name="ImportButton" Width="82" Content="Import"
+                            IsDefault="True" Click="Import_OnClick" />
+                    <Button Width="82" Content="Cancel" IsCancel="True" Click="Cancel_OnClick" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

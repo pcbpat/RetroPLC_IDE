@@ -1,0 +1,92 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RetroPLC.Shell.ViewModels.Docking"
+             xmlns:common="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia"
+             x:Class="RetroPLC.Shell.Views.Docking.MessagesView"
+             x:DataType="vm:MessagesViewModel">
+    <UserControl.Styles>
+        <Style Selector="ToggleButton.message-filter">
+            <Setter Property="MinHeight" Value="23"/>
+            <Setter Property="Padding" Value="6,2"/>
+        </Style>
+        <Style Selector="ListBoxItem">
+            <Setter Property="MinHeight" Value="21"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        </Style>
+        <Style Selector="TextBlock.cell">
+            <Setter Property="Margin" Value="4,2"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,Auto,*">
+        <Border Padding="3"
+                Background="{DynamicResource {x:Static common:SystemColors.ControlBrushKey}}"
+                BorderBrush="{DynamicResource {x:Static common:SystemColors.ControlDarkBrushKey}}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,*" ColumnSpacing="4">
+                <ToggleButton Grid.Column="0"
+                              Classes="message-filter"
+                              IsChecked="{Binding ShowErrors, Mode=TwoWay}"
+                              Content="{Binding ErrorFilterLabel}"/>
+                <ToggleButton Grid.Column="1"
+                              Classes="message-filter"
+                              IsChecked="{Binding ShowWarnings, Mode=TwoWay}"
+                              Content="{Binding WarningFilterLabel}"/>
+                <ToggleButton Grid.Column="2"
+                              Classes="message-filter"
+                              IsChecked="{Binding ShowMessages, Mode=TwoWay}"
+                              Content="{Binding MessageFilterLabel}"/>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="1"
+                Background="{DynamicResource {x:Static common:SystemColors.ControlBrushKey}}"
+                BorderBrush="{DynamicResource {x:Static common:SystemColors.ControlDarkBrushKey}}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="28,86,*,100,110,220,52,58">
+                <TextBlock Grid.Column="1" Classes="cell" FontWeight="SemiBold" Text="Code"/>
+                <TextBlock Grid.Column="2" Classes="cell" FontWeight="SemiBold" Text="Description"/>
+                <TextBlock Grid.Column="3" Classes="cell" FontWeight="SemiBold" Text="Source"/>
+                <TextBlock Grid.Column="4" Classes="cell" FontWeight="SemiBold" Text="Project"/>
+                <TextBlock Grid.Column="5" Classes="cell" FontWeight="SemiBold" Text="File"/>
+                <TextBlock Grid.Column="6" Classes="cell" FontWeight="SemiBold" Text="Line"/>
+                <TextBlock Grid.Column="7" Classes="cell" FontWeight="SemiBold" Text="Column"/>
+            </Grid>
+        </Border>
+
+        <ListBox Grid.Row="2"
+                 ItemsSource="{Binding Items}"
+                 DoubleTapped="MessageList_OnDoubleTapped"
+                 ScrollViewer.HorizontalScrollBarVisibility="Auto">
+            <ListBox.ItemTemplate>
+                <DataTemplate DataType="vm:LanguageMessageItem"
+                              x:DataType="vm:LanguageMessageItem">
+                    <Grid ColumnDefinitions="28,86,*,100,110,220,52,58"
+                          ToolTip.Tip="{Binding SeverityText}">
+                        <TextBlock Grid.Column="0"
+                                   Classes="cell"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{Binding SeverityBrush}"
+                                   Text="{Binding SeverityGlyph}"/>
+                        <TextBlock Grid.Column="1" Classes="cell" Text="{Binding Code}"/>
+                        <TextBlock Grid.Column="2"
+                                   Classes="cell"
+                                   ToolTip.Tip="{Binding Description}"
+                                   Text="{Binding Description}"/>
+                        <TextBlock Grid.Column="3" Classes="cell" Text="{Binding Source}"/>
+                        <TextBlock Grid.Column="4" Classes="cell" Text="{Binding Project}"/>
+                        <TextBlock Grid.Column="5"
+                                   Classes="cell"
+                                   ToolTip.Tip="{Binding FilePath}"
+                                   Text="{Binding FilePath}"/>
+                        <TextBlock Grid.Column="6" Classes="cell" Text="{Binding Line}"/>
+                        <TextBlock Grid.Column="7" Classes="cell" Text="{Binding Column}"/>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </Grid>
+</UserControl>

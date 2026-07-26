@@ -1,0 +1,13 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RetroPLC.Shell.ViewModels.Docking"
+             x:Class="RetroPLC.Shell.Views.Docking.ToolView"
+             x:DataType="vm:ToolViewModel">
+    <Grid Focusable="True">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+            <TextBlock Padding="2" Text="{Binding Id}"/>
+            <TextBlock Padding="2" Text="{Binding Title}"/>
+            <TextBlock Padding="2" Text="{Binding Context}"/>
+        </StackPanel>
+    </Grid>
+</UserControl>

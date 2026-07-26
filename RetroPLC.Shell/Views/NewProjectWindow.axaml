@@ -1,0 +1,149 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:common="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia"
+        x:Class="RetroPLC.Shell.Views.NewProjectWindow"
+        Title="New Project"
+        Icon="/Assets/Icons/Chicago95/program.png"
+        Width="590"
+        Height="475"
+        MinWidth="540"
+        MinHeight="430"
+        CanResize="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Styles>
+        <Style Selector="TextBox">
+            <Setter Property="CaretBrush"
+                    Value="{DynamicResource {x:Static common:SystemColors.WindowTextBrushKey}}" />
+        </Style>
+        <Style Selector="Image.template-icon">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Stretch" Value="Uniform" />
+        </Style>
+        <Style Selector="ListBox#TemplateList ListBoxItem">
+            <Setter Property="Width" Value="124" />
+            <Setter Property="Height" Value="82" />
+            <Setter Property="Margin" Value="2" />
+            <Setter Property="Padding" Value="4" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+    </Window.Styles>
+
+    <Grid Margin="12" RowDefinitions="Auto,*,Auto,Auto,Auto" RowSpacing="7">
+        <Grid Grid.Row="0" ColumnDefinitions="190,8,*">
+            <TextBlock Grid.Column="0" Text="Categories:" />
+            <TextBlock Grid.Column="2" Text="Templates:" />
+        </Grid>
+
+        <Grid Grid.Row="1" ColumnDefinitions="190,8,*">
+            <Border Grid.Column="0"
+                    Padding="4"
+                    Background="{DynamicResource {x:Static common:SystemColors.WindowBrushKey}}"
+                    BorderBrush="{DynamicResource {x:Static common:SystemColors.ControlDarkBrushKey}}"
+                    BorderThickness="1">
+                <TreeView x:Name="CategoryTree" SelectionChanged="CategoryTree_OnSelectionChanged">
+                    <TreeViewItem Tag="Libraries">
+                        <TreeViewItem.Header>
+                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                <Image Width="16" Height="16" Source="/Assets/Icons/Chicago95/folder.png" />
+                                <TextBlock Text="Libraries" />
+                            </StackPanel>
+                        </TreeViewItem.Header>
+                    </TreeViewItem>
+                    <TreeViewItem Tag="Projects">
+                        <TreeViewItem.Header>
+                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                <Image Width="16" Height="16" Source="/Assets/Icons/Chicago95/folder.png" />
+                                <TextBlock Text="Projects" />
+                            </StackPanel>
+                        </TreeViewItem.Header>
+                    </TreeViewItem>
+                </TreeView>
+            </Border>
+
+            <Border Grid.Column="2"
+                    Background="{DynamicResource {x:Static common:SystemColors.WindowBrushKey}}"
+                    BorderBrush="{DynamicResource {x:Static common:SystemColors.ControlDarkBrushKey}}"
+                    BorderThickness="1">
+                <ListBox x:Name="TemplateList"
+                         SelectionChanged="TemplateList_OnSelectionChanged"
+                         DoubleTapped="TemplateList_OnDoubleTapped">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+
+                    <ListBoxItem Tag="StandardLibrary">
+                        <StackPanel HorizontalAlignment="Center" Spacing="4">
+                            <Image Classes="template-icon" Source="/Assets/Icons/Chicago95/library.png" />
+                            <TextBlock Text="Standard library" TextAlignment="Center" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Tag="EmptyLibrary">
+                        <StackPanel HorizontalAlignment="Center" Spacing="4">
+                            <Image Classes="template-icon" Source="/Assets/Icons/Chicago95/library.png" />
+                            <TextBlock Text="Empty library" TextAlignment="Center" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Tag="ExternalLibrary">
+                        <StackPanel HorizontalAlignment="Center" Spacing="4">
+                            <Image Classes="template-icon" Source="/Assets/Icons/Chicago95/library.png" />
+                            <TextBlock Text="External library" TextAlignment="Center" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Tag="StandardProject" IsVisible="False">
+                        <StackPanel HorizontalAlignment="Center" Spacing="4">
+                            <Image Classes="template-icon" Source="/Assets/Icons/Chicago95/application.png" />
+                            <TextBlock Text="Standard project" TextAlignment="Center" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Tag="EmptyProject" IsVisible="False">
+                        <StackPanel HorizontalAlignment="Center" Spacing="4">
+                            <Image Classes="template-icon" Source="/Assets/Icons/Chicago95/application.png" />
+                            <TextBlock Text="Empty project" TextAlignment="Center" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </ListBoxItem>
+                </ListBox>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="2"
+                MinHeight="28"
+                Padding="5,4"
+                Background="{DynamicResource {x:Static common:SystemColors.WindowBrushKey}}"
+                BorderBrush="{DynamicResource {x:Static common:SystemColors.ControlDarkBrushKey}}"
+                BorderThickness="1">
+            <TextBlock x:Name="DescriptionText"
+                       VerticalAlignment="Center"
+                       Text="A reusable IEC 61131-3 library with the standard project structure." />
+        </Border>
+
+        <Grid Grid.Row="3" ColumnDefinitions="58,*,Auto" RowDefinitions="Auto,Auto" RowSpacing="7">
+            <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="Name:" />
+            <TextBox x:Name="ProjectNameBox"
+                     Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2"
+                     Text="Library1" />
+
+            <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Text="Location:" />
+            <TextBox x:Name="LocationBox" Grid.Row="1" Grid.Column="1" Text="Documents/ConceptPLC" />
+            <Button Grid.Row="1" Grid.Column="2"
+                    Width="28" Margin="5,0,0,0"
+                    Content="..."
+                    Click="Browse_OnClick" />
+        </Grid>
+
+        <Border Grid.Row="4"
+                Margin="-12,2,-12,-12"
+                Padding="12,10"
+                BorderBrush="{DynamicResource {x:Static common:SystemColors.ControlDarkBrushKey}}"
+                BorderThickness="0,1,0,0">
+            <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+                <Button x:Name="CreateButton" Width="82" Content="OK" IsDefault="True" Click="Create_OnClick" />
+                <Button Width="82" Content="Cancel" IsCancel="True" Click="Cancel_OnClick" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

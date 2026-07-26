@@ -1,0 +1,36 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RetroPLC.Shell.ViewModels.Docking"
+             xmlns:common="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia"
+             x:Class="RetroPLC.Shell.Views.Docking.ReferencesView"
+             x:DataType="vm:ReferencesViewModel">
+    <UserControl.Styles>
+        <Style Selector="TreeView">
+            <Setter Property="Padding" Value="2"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+        <Style Selector="TreeViewItem">
+            <Setter Property="IsExpanded" Value="{ReflectionBinding IsExpanded}"/>
+            <Setter Property="MinHeight" Value="19"/>
+            <Setter Property="Padding" Value="0"/>
+        </Style>
+    </UserControl.Styles>
+
+    <TreeView ItemsSource="{Binding Nodes}"
+              DoubleTapped="TreeView_OnDoubleTapped"
+              HorizontalAlignment="Stretch"
+              VerticalAlignment="Stretch">
+        <TreeView.Resources>
+            <SolidColorBrush x:Key="{x:Static common:SystemColors.ControlDarkBrushKey}"
+                             Color="{DynamicResource {x:Static common:SystemColors.GrayTextColorKey}}"/>
+        </TreeView.Resources>
+        <TreeView.ItemTemplate>
+            <TreeDataTemplate DataType="vm:ReferenceTreeNode"
+                              ItemsSource="{Binding Children}"
+                              x:DataType="vm:ReferenceTreeNode">
+                <TextBlock VerticalAlignment="Center"
+                           Text="{Binding DisplayText}"/>
+            </TreeDataTemplate>
+        </TreeView.ItemTemplate>
+    </TreeView>
+</UserControl>
