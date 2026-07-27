@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Threading;
@@ -14,14 +13,13 @@ using Dock.Model.Mvvm;
 using Dock.Model.Mvvm.Controls;
 using Dock.Settings;
 using RetroPLC.LanguageServerHost;
+using RetroPLC.Shell.Language;
 using RetroPLC.Shell.Models;
 
 namespace RetroPLC.Shell.ViewModels.Docking;
 
 public sealed class DockFactory : Factory
 {
-    private static readonly Regex PouIdentifierPattern =
-        new("^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.CultureInvariant);
     private const double DefaultFloatingWidth = 420;
     private const double DefaultFloatingHeight = 320;
     private const double MaximumFloatingWidth = 640;
@@ -368,11 +366,11 @@ public sealed class DockFactory : Factory
             throw new InvalidOperationException("Open a project before adding a POU.");
 
         ValidatePouDefinition(definition);
-        var (folderName, categoryName, typeName) = definition.Kind switch
+        var (folderName, categoryName) = definition.Kind switch
         {
-            PouKind.Program => ("Programs", "Programs", "PROGRAM"),
-            PouKind.FunctionBlock => ("FunctionBlocks", "Function Blocks", "FUNCTION_BLOCK"),
-            PouKind.Function => ("Functions", "Functions", "FUNCTION"),
+            PouKind.Program => ("Programs", "Programs"),
+            PouKind.FunctionBlock => ("FunctionBlocks", "Function Blocks"),
+            PouKind.Function => ("Functions", "Functions"),
             _ => throw new ArgumentOutOfRangeException(nameof(definition.Kind))
         };
 
@@ -399,7 +397,7 @@ public sealed class DockFactory : Factory
 
         var node = new ProjectNodeDefinition
         {
-            Name = $"{definition.Name} ({typeName})",
+            Name = definition.Name,
             Icon = "program",
             FilePath = relativePath,
             IsExpanded = true
@@ -512,11 +510,11 @@ public sealed class DockFactory : Factory
 
     private static void ValidatePouDefinition(NewPouDefinition definition)
     {
-        if (!PouIdentifierPattern.IsMatch(definition.Name))
+        if (!IecIdentifier.IsValid(definition.Name))
             throw new InvalidDataException("The POU name is not a valid IEC identifier.");
-        if (definition.Extends is { } extends && !PouIdentifierPattern.IsMatch(extends))
+        if (definition.Extends is { } extends && !IecIdentifier.IsValid(extends))
             throw new InvalidDataException("The EXTENDS type is not a valid IEC identifier.");
-        if (definition.Implements is { } implements && !PouIdentifierPattern.IsMatch(implements))
+        if (definition.Implements is { } implements && !IecIdentifier.IsValid(implements))
             throw new InvalidDataException("The IMPLEMENTS type is not a valid IEC identifier.");
         if (definition.IsAbstract && definition.IsFinal)
             throw new InvalidDataException("A function block cannot be both ABSTRACT and FINAL.");

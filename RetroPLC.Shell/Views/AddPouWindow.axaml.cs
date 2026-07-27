@@ -1,16 +1,13 @@
 using System;
-using System.Text.RegularExpressions;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using RetroPLC.Shell.Language;
 using RetroPLC.Shell.Models;
 
 namespace RetroPLC.Shell.Views;
 
 public partial class AddPouWindow : Window
 {
-    private static readonly Regex IdentifierPattern =
-        new("^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.CultureInvariant);
-
     public AddPouWindow()
     {
         InitializeComponent();
@@ -56,7 +53,7 @@ public partial class AddPouWindow : Window
     private void ValidateName()
     {
         var name = NameBox.Text?.Trim() ?? string.Empty;
-        var isValid = IdentifierPattern.IsMatch(name);
+        var isValid = IecIdentifier.IsValid(name);
         AddButton.IsEnabled = isValid;
         ValidationText.Text = isValid || name.Length == 0
             ? string.Empty
@@ -66,7 +63,7 @@ public partial class AddPouWindow : Window
     private void Add_OnClick(object? sender, RoutedEventArgs e)
     {
         var name = NameBox.Text?.Trim() ?? string.Empty;
-        if (!IdentifierPattern.IsMatch(name))
+        if (!IecIdentifier.IsValid(name))
         {
             ValidateName();
             return;

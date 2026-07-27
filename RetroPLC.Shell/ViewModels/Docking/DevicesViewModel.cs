@@ -53,28 +53,28 @@ public sealed class DevicesViewModel : Tool
                     [
                         new("Programs", DeviceIcons.Folder,
                         [
-                            new("Main (PROGRAM)", DeviceIcons.Program,
+                            new("Main", DeviceIcons.Program,
                                 filePath: "ProjectFiles/POUs/Programs/Main.st"),
-                            new("Blink (PROGRAM)", DeviceIcons.Program,
+                            new("Blink", DeviceIcons.Program,
                                 filePath: "ProjectFiles/POUs/Programs/Blink.st")
                         ], false),
                         new("Function Blocks", DeviceIcons.Folder,
                         [
-                            new("Counter (FUNCTION_BLOCK)", DeviceIcons.Program,
+                            new("Counter", DeviceIcons.Program,
                                 filePath: "ProjectFiles/POUs/FunctionBlocks/Counter.st"),
-                            new("MotorController (FUNCTION_BLOCK)", DeviceIcons.Program,
+                            new("MotorController", DeviceIcons.Program,
                                 filePath: "ProjectFiles/POUs/FunctionBlocks/MotorController.st"),
-                            new("PID_Controller (FUNCTION_BLOCK)", DeviceIcons.Program,
+                            new("PID_Controller", DeviceIcons.Program,
                                 filePath: "ProjectFiles/POUs/FunctionBlocks/PID_Controller.st")
                         ], false),
                         new("Functions", DeviceIcons.Folder,
                         [
-                            new("ScaleAnalog (FUNCTION)", DeviceIcons.Program,
+                            new("ScaleAnalog", DeviceIcons.Program,
                                 filePath: "ProjectFiles/POUs/Functions/ScaleAnalog.st")
                         ], false),
                         new("Interfaces", DeviceIcons.Folder,
                         [
-                            new("IRunnable (INTERFACE)", DeviceIcons.Program,
+                            new("IRunnable", DeviceIcons.Program,
                                 filePath: "ProjectFiles/POUs/Interfaces/IRunnable.st")
                         ], false)
                     ]),
@@ -190,9 +190,14 @@ public sealed class DevicesViewModel : Tool
         for (var index = 0; index < document.Tree.Count; index++)
         {
             var definition = document.Tree[index];
-            Nodes.Add(index == 0
-                ? CreateProjectRootNode(definition, projectDirectory)
-                : CreateTreeNode(definition, projectDirectory));
+            if (index == 0)
+            {
+                Nodes.Add(CreateProjectRootNode(definition, projectDirectory));
+                continue;
+            }
+
+            foreach (var node in CreateTreeNodes(definition, projectDirectory))
+                Nodes.Add(node);
         }
     }
 
@@ -239,12 +244,12 @@ public sealed class DevicesViewModel : Tool
     {
         var children = definition.Children
             .Where(child => !string.Equals(child.Name, "Build", StringComparison.Ordinal))
-            .Select(child => CreateTreeNode(child, projectDirectory))
+            .SelectMany(child => CreateTreeNodes(child, projectDirectory))
             .ToList();
         children.Add(CreateBuildNode(projectDirectory));
 
         return new DeviceTreeNode(
-            definition.Name,
+            GetProjectTreeNodeDisplayName(definition),
             DeviceIcons.Get(definition.Icon),
             children,
             definition.IsExpanded,
@@ -257,18 +262,26 @@ public sealed class DevicesViewModel : Tool
         string projectDirectory)
     {
         var children = definition.Children
-            .Select(child => CreateTreeNode(child, projectDirectory))
+            .SelectMany(child => CreateTreeNodes(child, projectDirectory))
             .ToList();
-        var symbolNodes = CreateDocumentSymbolNodes(definition, projectDirectory);
-        children.AddRange(symbolNodes);
 
         return new DeviceTreeNode(
-            definition.Name,
+            GetProjectTreeNodeDisplayName(definition),
             DeviceIcons.Get(definition.Icon),
             children,
-            symbolNodes.Count == 0 && definition.IsExpanded,
+            definition.IsExpanded,
             definition.FilePath,
             definition.LibraryFileName);
+    }
+
+    private IReadOnlyList<DeviceTreeNode> CreateTreeNodes(
+        ProjectNodeDefinition definition,
+        string projectDirectory)
+    {
+        var symbolNodes = CreateDocumentSymbolNodes(definition, projectDirectory);
+        return symbolNodes.Count > 0
+            ? symbolNodes
+            : [CreateTreeNode(definition, projectDirectory)];
     }
 
     private IReadOnlyList<DeviceTreeNode> CreateDocumentSymbolNodes(
@@ -287,11 +300,11 @@ public sealed class DevicesViewModel : Tool
         if (!_documentSymbols.TryGetValue(fullPath, out var symbols))
             return [];
 
-        var visibleSymbols = symbols.Count == 1 && IsDocumentContainerSymbol(symbols[0])
-            ? symbols[0].Children
-            : symbols;
-        return visibleSymbols
-            .Select(symbol => CreateDocumentSymbolNode(symbol, relativePath, fullPath))
+        return symbols
+            .Select(symbol => CreateDocumentSymbolNode(
+                IsPouPath(relativePath) ? symbol with { Detail = null } : symbol,
+                relativePath,
+                fullPath))
             .ToList();
     }
 
@@ -310,6 +323,9 @@ public sealed class DevicesViewModel : Tool
             location: new StrucppLocation(fullPath, symbol.SelectionRange),
             isTransient: true);
 
+    private static bool IsPouPath(string path) =>
+        NormalizeRelativePath(path).Contains("/POUs/", StringComparison.OrdinalIgnoreCase);
+
     private static string FormatDocumentSymbol(StrucppDocumentSymbol symbol)
     {
         if (string.IsNullOrWhiteSpace(symbol.Detail))
@@ -327,13 +343,6 @@ public sealed class DevicesViewModel : Tool
         5 or 6 or 9 or 11 or 12 or 23 => DeviceIcons.Program,
         _ => DeviceIcons.Settings
     };
-
-    private static bool IsDocumentContainerSymbol(StrucppDocumentSymbol symbol) =>
-        symbol.Detail?.Trim().ToUpperInvariant() is
-            "PROGRAM" or
-            "FUNCTION_BLOCK" or
-            "FUNCTION" or
-            "INTERFACE";
 
     private static bool IsStructuredTextPath(string path)
     {
@@ -551,19 +560,12 @@ public sealed class DevicesViewModel : Tool
     }
 
     private static string CreateProjectFileDisplayName(string relativePath)
-    {
-        var name = Path.GetFileNameWithoutExtension(relativePath);
-        var normalized = NormalizeRelativePath(relativePath);
-        if (normalized.Contains("/POUs/Programs/", StringComparison.OrdinalIgnoreCase))
-            return $"{name} (PROGRAM)";
-        if (normalized.Contains("/POUs/FunctionBlocks/", StringComparison.OrdinalIgnoreCase))
-            return $"{name} (FUNCTION_BLOCK)";
-        if (normalized.Contains("/POUs/Functions/", StringComparison.OrdinalIgnoreCase))
-            return $"{name} (FUNCTION)";
-        if (normalized.Contains("/POUs/Interfaces/", StringComparison.OrdinalIgnoreCase))
-            return $"{name} (INTERFACE)";
-        return name;
-    }
+        => Path.GetFileNameWithoutExtension(relativePath);
+
+    private static string GetProjectTreeNodeDisplayName(ProjectNodeDefinition definition) =>
+        definition.FilePath is { } filePath && IsStructuredTextPath(filePath)
+            ? Path.GetFileNameWithoutExtension(filePath)
+            : definition.Name;
 
     private static string GetProjectFileIcon(string relativePath)
     {
