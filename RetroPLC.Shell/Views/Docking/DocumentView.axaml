@@ -39,6 +39,10 @@
                 <commonControls:ToolBarButton SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.EditRedo}"
                                               ToolTip.Tip="Redo"
                                               Click="Redo_OnClick" />
+                <Separator />
+                <commonControls:ToolBarButton SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.FormatIndentMore}"
+                                              ToolTip.Tip="Format Document (Ctrl+Alt+F)"
+                                              Click="FormatDocument_OnClick" />
             </commonControls:ToolBar>
         </ClassicBorderDecorator>
 
@@ -62,6 +66,10 @@
                     <MenuItem Header="_Rename..."
                               InputGesture="F2"
                               Click="Rename_OnClick"/>
+                    <Separator/>
+                    <MenuItem Header="Format Document"
+                              InputGesture="Ctrl+Alt+F"
+                              Click="FormatDocument_OnClick"/>
                 </ContextMenu>
             </edit:TextEditor.ContextMenu>
         </edit:TextEditor>

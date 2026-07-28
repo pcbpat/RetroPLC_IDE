@@ -30,6 +30,7 @@ public partial class DocumentView : UserControl
     private CancellationTokenSource? _completionRequest;
     private CancellationTokenSource? _renameRequest;
     private CancellationTokenSource? _navigationRequest;
+    private CancellationTokenSource? _formatRequest;
     private DocumentViewModel? _renameDocument;
 
     private const string StructuredTextScope = "source.iec61131-st";
@@ -56,6 +57,7 @@ public partial class DocumentView : UserControl
             CancelCompletion();
             CancelRename();
             CancelNavigationRequest();
+            CancelFormat();
         };
         ApplySyntaxHighlighting();
     }
@@ -67,6 +69,7 @@ public partial class DocumentView : UserControl
             _renameDocument.RenameRequested -= OnRenameRequested;
             _renameDocument.GoToDefinitionRequested -= OnGoToDefinitionRequested;
             _renameDocument.FindReferencesRequested -= OnFindReferencesRequested;
+            _renameDocument.FormatRequested -= OnFormatRequested;
             _renameDocument.NavigationRequested -= OnNavigationRequested;
         }
         _renameDocument = DataContext as DocumentViewModel;
@@ -75,6 +78,7 @@ public partial class DocumentView : UserControl
             _renameDocument.RenameRequested += OnRenameRequested;
             _renameDocument.GoToDefinitionRequested += OnGoToDefinitionRequested;
             _renameDocument.FindReferencesRequested += OnFindReferencesRequested;
+            _renameDocument.FormatRequested += OnFormatRequested;
             _renameDocument.NavigationRequested += OnNavigationRequested;
         }
 
@@ -262,6 +266,16 @@ public partial class DocumentView : UserControl
             return;
         }
 
+        if (e.Key == Key.F &&
+            e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Alt) &&
+            DataContext is DocumentViewModel formatDocument &&
+            !IsCppExtension(Path.GetExtension(formatDocument.FilePath)))
+        {
+            e.Handled = true;
+            _ = FormatDocumentAsync();
+            return;
+        }
+
         if (e.Key != Key.Space ||
             !e.KeyModifiers.HasFlag(KeyModifiers.Control) ||
             DataContext is not DocumentViewModel document ||
@@ -279,6 +293,8 @@ public partial class DocumentView : UserControl
 
     private void OnFindReferencesRequested() => _ = FindReferencesAsync();
 
+    private void OnFormatRequested() => _ = FormatDocumentAsync();
+
     private void OnNavigationRequested() => NavigateToPendingLocation();
 
     private void GoToDefinition_OnClick(object? sender, RoutedEventArgs e) =>
@@ -289,6 +305,112 @@ public partial class DocumentView : UserControl
 
     private void Rename_OnClick(object? sender, RoutedEventArgs e) =>
         _ = RenameSymbolAsync();
+
+    private void FormatDocument_OnClick(object? sender, RoutedEventArgs e) =>
+        _ = FormatDocumentAsync();
+
+    private async Task FormatDocumentAsync()
+    {
+        CancelCompletion();
+        CancelFormat();
+        _formatRequest = new CancellationTokenSource();
+        var cancellationToken = _formatRequest.Token;
+
+        try
+        {
+            if (DataContext is not DocumentViewModel document ||
+                Editor.Document is null ||
+                IsCppExtension(Path.GetExtension(document.FilePath)))
+                return;
+
+            var version = document.Version;
+            var edits = await document.FormatAsync(
+                tabSize: 4,
+                insertSpaces: true,
+                cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!ReferenceEquals(DataContext, document) ||
+                document.Version != version ||
+                edits.Count == 0)
+                return;
+
+            var replacements = edits
+                .Select(edit =>
+                {
+                    var startOffset = GetFormattingOffset(edit.Range.Start);
+                    var endOffset = GetFormattingOffset(edit.Range.End);
+                    if (endOffset < startOffset)
+                        throw new InvalidDataException(
+                            "The language server returned an invalid formatting range.");
+                    return new
+                    {
+                        StartOffset = startOffset,
+                        Length = endOffset - startOffset,
+                        edit.NewText
+                    };
+                })
+                .OrderByDescending(edit => edit.StartOffset)
+                .ToArray();
+
+            Editor.Document.BeginUpdate();
+            try
+            {
+                foreach (var replacement in replacements)
+                {
+                    Editor.Document.Replace(
+                        replacement.StartOffset,
+                        replacement.Length,
+                        replacement.NewText);
+                }
+            }
+            finally
+            {
+                Editor.Document.EndUpdate();
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            await ShowLanguageFeatureMessageAsync(
+                exception.Message,
+                "Format Document",
+                MessageBoxIcon.Error);
+        }
+        finally
+        {
+            if (_formatRequest?.Token == cancellationToken)
+            {
+                _formatRequest.Dispose();
+                _formatRequest = null;
+            }
+            Editor.Focus();
+        }
+    }
+
+    private int GetFormattingOffset(StrucppPosition position)
+    {
+        if (Editor.Document is null)
+            throw new InvalidOperationException("The document is not available.");
+
+        var lineNumber = position.Line + 1;
+        if (lineNumber < 1 || lineNumber > Editor.Document.LineCount)
+            throw new InvalidDataException(
+                "The language server returned a formatting line outside the document.");
+        var line = Editor.Document.GetLineByNumber(lineNumber);
+        if (position.Character < 0 || position.Character > line.Length)
+            throw new InvalidDataException(
+                "The language server returned a formatting column outside the document.");
+        return line.Offset + position.Character;
+    }
+
+    private void CancelFormat()
+    {
+        _formatRequest?.Cancel();
+        _formatRequest?.Dispose();
+        _formatRequest = null;
+    }
 
     private async Task GoToDefinitionAsync()
     {

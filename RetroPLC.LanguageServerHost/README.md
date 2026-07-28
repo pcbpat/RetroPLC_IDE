@@ -12,7 +12,8 @@ This project owns the IDE-facing STruC++ integration:
 
 Consumers should not construct JSON-RPC payloads or hard-code tool paths. They
 subscribe to `DiagnosticsPublished` and `ServerError`, and call the typed
-document, completion, and rename methods on `IStrucppLanguageService`.
+document, completion, formatting, and rename methods on
+`IStrucppLanguageService`.
 
 The tool content is copied transitively into a consuming application's
 `StrucppTools` output directory.

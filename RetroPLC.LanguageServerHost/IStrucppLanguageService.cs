@@ -61,6 +61,12 @@ public interface IStrucppLanguageService : IAsyncDisposable
         bool includeDeclaration = true,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<StrucppTextEdit>> FormatDocumentAsync(
+        string filePath,
+        int tabSize = 4,
+        bool insertSpaces = true,
+        CancellationToken cancellationToken = default);
+
     Task<StrucppPrepareRenameResult?> PrepareRenameAsync(
         string filePath,
         int line,

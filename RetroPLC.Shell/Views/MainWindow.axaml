@@ -77,6 +77,10 @@
                               Command="{Binding FindReferencesCommand}" />
                     <MenuItem Header="Navigate To..." IsEnabled="False" />
                     <Separator />
+                    <MenuItem Header="Format Document"
+                              InputGesture="Ctrl+Alt+F"
+                              Command="{Binding FormatDocumentCommand}" />
+                    <Separator />
                     <MenuItem Header="Make Uppercase" IsEnabled="False" />
                     <MenuItem Header="Make Lowercase" IsEnabled="False" />
                     <MenuItem Header="View White Spaces" IsEnabled="False" />

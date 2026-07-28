@@ -236,6 +236,7 @@ public sealed class DockFactory : Factory
         document.RenameProvider = RenameDocumentAsync;
         document.DefinitionProvider = GoToDocumentDefinitionAsync;
         document.ReferencesProvider = FindDocumentReferencesAsync;
+        document.FormatProvider = FormatDocumentAsync;
         if (_diagnostics.TryGetValue(filePath, out var diagnostics))
             document.SetDiagnostics(diagnostics);
         AddDockable(_documentDock, document);
@@ -635,6 +636,14 @@ public sealed class DockFactory : Factory
             ?.RequestFindReferences();
     }
 
+    public void RequestFormatActiveDocument()
+    {
+        Find(dockable => dockable is DocumentViewModel { IsActive: true })
+            .OfType<DocumentViewModel>()
+            .FirstOrDefault()
+            ?.RequestFormat();
+    }
+
     public void CloseAllDocuments()
     {
         var documents = Find(dockable => dockable is DocumentViewModel)
@@ -893,6 +902,27 @@ public sealed class DockFactory : Factory
             SetFocusedDockable(_terminalDock, _referencesTool);
         });
         return projectReferences.Length;
+    }
+
+    private async Task<IReadOnlyList<StrucppTextEdit>> FormatDocumentAsync(
+        DocumentViewModel document,
+        int tabSize,
+        bool insertSpaces,
+        CancellationToken cancellationToken)
+    {
+        if (!_languageClient.IsRunning)
+            return [];
+
+        await _languageClient.ChangeDocumentAsync(
+            document.FilePath,
+            document.Document.Text,
+            document.Version,
+            cancellationToken);
+        return await _languageClient.FormatDocumentAsync(
+            document.FilePath,
+            tabSize,
+            insertSpaces,
+            cancellationToken);
     }
 
     private bool IsNavigableLocation(StrucppLocation location)

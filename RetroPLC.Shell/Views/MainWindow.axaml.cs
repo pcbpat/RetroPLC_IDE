@@ -89,7 +89,17 @@ public partial class MainWindow : Window
         }
 
         if (e.KeyModifiers != KeyModifiers.Control)
+        {
+            if (e.Key == Key.F &&
+                e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Alt) &&
+                DataContext is MainWindowViewModel formatViewModel &&
+                formatViewModel.FormatDocumentCommand.CanExecute(null))
+            {
+                e.Handled = true;
+                formatViewModel.FormatDocumentCommand.Execute(null);
+            }
             return;
+        }
 
         switch (e.Key)
         {

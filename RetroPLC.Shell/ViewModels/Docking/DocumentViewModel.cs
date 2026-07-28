@@ -35,6 +35,7 @@ public sealed class DocumentViewModel : Document
     public event Action? RenameRequested;
     public event Action? GoToDefinitionRequested;
     public event Action? FindReferencesRequested;
+    public event Action? FormatRequested;
     public event Action? NavigationRequested;
 
     public Func<
@@ -73,6 +74,13 @@ public sealed class DocumentViewModel : Document
         int,
         CancellationToken,
         Task<int>>? ReferencesProvider { get; set; }
+
+    public Func<
+        DocumentViewModel,
+        int,
+        bool,
+        CancellationToken,
+        Task<IReadOnlyList<StrucppTextEdit>>>? FormatProvider { get; set; }
 
     public string FilePath { get; }
 
@@ -151,11 +159,28 @@ public sealed class DocumentViewModel : Document
         ReferencesProvider?.Invoke(this, line, character, cancellationToken) ??
         Task.FromResult(0);
 
+    public async Task<IReadOnlyList<StrucppTextEdit>> FormatAsync(
+        int tabSize,
+        bool insertSpaces,
+        CancellationToken cancellationToken = default)
+    {
+        if (FormatProvider is null)
+            return [];
+
+        return await FormatProvider(
+            this,
+            tabSize,
+            insertSpaces,
+            cancellationToken);
+    }
+
     public void RequestRename() => RenameRequested?.Invoke();
 
     public void RequestGoToDefinition() => GoToDefinitionRequested?.Invoke();
 
     public void RequestFindReferences() => FindReferencesRequested?.Invoke();
+
+    public void RequestFormat() => FormatRequested?.Invoke();
 
     public void NavigateTo(StrucppRange range)
     {
@@ -190,12 +215,14 @@ public sealed class DocumentViewModel : Document
         RenameRequested = null;
         GoToDefinitionRequested = null;
         FindReferencesRequested = null;
+        FormatRequested = null;
         NavigationRequested = null;
         CompletionProvider = null;
         PrepareRenameProvider = null;
         RenameProvider = null;
         DefinitionProvider = null;
         ReferencesProvider = null;
+        FormatProvider = null;
         return true;
     }
 

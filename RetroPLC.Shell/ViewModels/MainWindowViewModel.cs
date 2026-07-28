@@ -59,6 +59,7 @@ public partial class MainWindowViewModel : ViewModelBase
     public IRelayCommand RenameSymbolCommand { get; }
     public IRelayCommand GoToDefinitionCommand { get; }
     public IRelayCommand FindReferencesCommand { get; }
+    public IRelayCommand FormatDocumentCommand { get; }
     public IRelayCommand CloseAllDocumentsCommand { get; }
     public IRelayCommand OpenTerminalCommand { get; }
     public IRelayCommand OpenAppearanceCommand { get; }
@@ -153,6 +154,9 @@ public partial class MainWindowViewModel : ViewModelBase
         FindReferencesCommand = new RelayCommand(
             _factory.RequestFindReferencesActiveDocument,
             () => _isProjectOpen);
+        FormatDocumentCommand = new RelayCommand(
+            _factory.RequestFormatActiveDocument,
+            () => _isProjectOpen);
         CloseAllDocumentsCommand = new RelayCommand(_factory.CloseAllDocuments);
         OpenTerminalCommand = new RelayCommand(_factory.OpenTerminal);
         OpenAppearanceCommand = new RelayCommand(_factory.OpenAppearance, () => _isProjectOpen);
@@ -179,6 +183,7 @@ public partial class MainWindowViewModel : ViewModelBase
         RenameSymbolCommand.NotifyCanExecuteChanged();
         GoToDefinitionCommand.NotifyCanExecuteChanged();
         FindReferencesCommand.NotifyCanExecuteChanged();
+        FormatDocumentCommand.NotifyCanExecuteChanged();
         OpenAppearanceCommand.NotifyCanExecuteChanged();
     }
 

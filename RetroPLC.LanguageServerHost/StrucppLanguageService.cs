@@ -194,6 +194,12 @@ public sealed class StrucppLanguageService : IStrucppLanguageService
         return ParseLocations(result);
     }
 
+    // Work around a STruC++ LSP analysis race: textDocument/references can
+    // temporarily return pre-change ranges while didChange re-analysis is
+    // debounced. Returned ranges are checked against the current document and,
+    // when stale entries are found, the request is retried after the debounce
+    // window. This can be removed once STruC++ refreshes live document analysis
+    // before handling reference requests.
     public async Task<IReadOnlyList<StrucppLocation>> FindReferencesAsync(
         string filePath,
         int line,
@@ -210,7 +216,67 @@ public sealed class StrucppLanguageService : IStrucppLanguageService
             "textDocument/references",
             parameters,
             cancellationToken).ConfigureAwait(false);
-        return ParseLocations(result);
+        var locations = ParseLocations(result);
+        if (!TryGetIdentifierAt(
+                filePath,
+                line,
+                character,
+                out var identifier,
+                out _) ||
+            string.IsNullOrWhiteSpace(identifier))
+            return locations;
+
+        var filtered = FilterReferenceLocations(locations, identifier);
+        if (filtered.Count == locations.Count)
+            return filtered;
+
+        // STruC++ re-analyzes changed documents after the configured 350 ms
+        // debounce. If stale ranges exposed that race, let the pending analysis
+        // finish and retry without sending another didChange.
+        await Task.Delay(TimeSpan.FromMilliseconds(450), cancellationToken)
+            .ConfigureAwait(false);
+        result = await Client.RequestAsync(
+            "textDocument/references",
+            parameters,
+            cancellationToken).ConfigureAwait(false);
+        return FilterReferenceLocations(ParseLocations(result), identifier);
+    }
+
+    public async Task<IReadOnlyList<StrucppTextEdit>> FormatDocumentAsync(
+        string filePath,
+        int tabSize = 4,
+        bool insertSpaces = true,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(tabSize, 1);
+        var result = await Client.RequestAsync(
+            "textDocument/formatting",
+            new JsonObject
+            {
+                ["textDocument"] = new JsonObject { ["uri"] = ToFileUri(filePath) },
+                ["options"] = new JsonObject
+                {
+                    ["tabSize"] = tabSize,
+                    ["insertSpaces"] = insertSpaces,
+                    ["trimTrailingWhitespace"] = true,
+                    ["insertFinalNewline"] = true,
+                    ["trimFinalNewlines"] = true
+                }
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        if (result is not JsonArray edits)
+            return [];
+
+        return edits
+            .OfType<JsonObject>()
+            .Where(edit =>
+                edit["range"] is JsonObject &&
+                edit["newText"] is JsonValue)
+            .Select(edit => new StrucppTextEdit(
+                ParseRange((JsonObject)edit["range"]!),
+                edit["newText"]!.GetValue<string>()))
+            .ToArray();
     }
 
     public async Task<StrucppPrepareRenameResult?> PrepareRenameAsync(
@@ -442,6 +508,41 @@ public sealed class StrucppLanguageService : IStrucppLanguageService
             .ToArray();
     }
 
+    private IReadOnlyList<StrucppLocation> FilterReferenceLocations(
+        IReadOnlyList<StrucppLocation> locations,
+        string identifier)
+    {
+        var filtered = new List<StrucppLocation>(locations.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var location in locations)
+        {
+            StrucppRange range;
+            try
+            {
+                // A changed document can temporarily coexist with stale
+                // workspace-analysis ranges in STruC++. Keep only ranges that
+                // still select the requested identifier in the current text.
+                range = ConstrainToIdentifier(
+                    location.FilePath,
+                    location.Range,
+                    identifier);
+            }
+            catch (InvalidDataException)
+            {
+                continue;
+            }
+
+            var key =
+                $"{NormalizePath(location.FilePath)}\0" +
+                $"{range.Start.Line}:{range.Start.Character}:" +
+                $"{range.End.Line}:{range.End.Character}";
+            if (seen.Add(key))
+                filtered.Add(new StrucppLocation(location.FilePath, range));
+        }
+
+        return filtered;
+    }
+
     private static StrucppLocation? ParseLocation(JsonObject location)
     {
         // Definition can return either Location or LocationLink.
@@ -527,7 +628,7 @@ public sealed class StrucppLanguageService : IStrucppLanguageService
         var startOffset = GetOffset(text, range.Start);
         var endOffset = GetOffset(text, range.End);
         if (endOffset < startOffset)
-            throw new InvalidDataException("The language server returned an invalid rename range.");
+            throw new InvalidDataException("The language server returned an invalid symbol range.");
 
         var selectedText = text[startOffset..endOffset];
         if (string.Equals(selectedText, identifier, StringComparison.OrdinalIgnoreCase))
@@ -558,7 +659,7 @@ public sealed class StrucppLanguageService : IStrucppLanguageService
         if (matchOffsets.Count == 0)
         {
             throw new InvalidDataException(
-                "The language server returned a rename range that does not contain the symbol.");
+                "The language server returned a range that does not contain the symbol.");
         }
 
         // STruC++ may return the span of an entire call expression for its
@@ -571,7 +672,7 @@ public sealed class StrucppLanguageService : IStrucppLanguageService
             : matchOffsets.Count == 1
                 ? matchOffsets[0]
                 : throw new InvalidDataException(
-                    "The language server returned an ambiguous rename range.");
+                    "The language server returned an ambiguous symbol range.");
 
         var identifierStart = startOffset + matchOffset;
         return new StrucppRange(
