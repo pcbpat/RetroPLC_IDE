@@ -345,7 +345,7 @@
             </Border>
 
             <DockControl IsVisible="{Binding IsProjectOpen}"
-                         behaviors:PinnedDockHoverBehavior.IsEnabled="True"
+                         behaviors:PinnedDockHoverBehavior.IsEnabled="False"
                          Layout="{Binding Layout}"/>
         </Grid>
 
