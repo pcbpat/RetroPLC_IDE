@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:RetroPLC.Shell.ViewModels.Docking"
              xmlns:strucpp="using:RetroPLC.LanguageServerHost"
+             xmlns:icons="using:RetroPLC.Icons"
              xmlns:edit="clr-namespace:AvaloniaEdit;assembly=AvaloniaEdit"
              xmlns:commonControls="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia"
              x:Class="RetroPLC.Shell.Views.Docking.DocumentView"
@@ -15,27 +16,27 @@
                                     Margin="0,1">
                 <commonControls:RebarHandle Width="4" Margin="2,0,0,0" />
                 <commonControls:RebarHandle Width="4" />
-                <commonControls:ToolBarButton SmallIcon="/Assets/Icons/Chicago95/save16.png"
+                <commonControls:ToolBarButton SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.DocumentSave}"
                                               ToolTip.Tip="Save"
                                               Click="Save_OnClick" />
                 <Separator />
-                <commonControls:ToolBarButton SmallIcon="/Assets/Icons/Chicago95/cut16.png"
+                <commonControls:ToolBarButton SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.EditCut}"
                                               ToolTip.Tip="Cut"
                                               Click="Cut_OnClick" />
-                <commonControls:ToolBarButton SmallIcon="/Assets/Icons/Chicago95/copy16.png"
+                <commonControls:ToolBarButton SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.EditCopy}"
                                               ToolTip.Tip="Copy"
                                               Click="Copy_OnClick" />
-                <commonControls:ToolBarButton SmallIcon="/Assets/Icons/Chicago95/paste16.png"
+                <commonControls:ToolBarButton SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.EditPaste}"
                                               ToolTip.Tip="Paste"
                                               Click="Paste_OnClick" />
-                <commonControls:ToolBarButton SmallIcon="/Assets/Icons/Chicago95/find16.png"
+                <commonControls:ToolBarButton SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.Find}"
                                               ToolTip.Tip="Find"
                                               Click="Find_OnClick" />
                 <Separator />
-                <commonControls:ToolBarButton SmallIcon="/Assets/Icons/Chicago95/undo16.png"
+                <commonControls:ToolBarButton SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.EditUndo}"
                                               ToolTip.Tip="Undo"
                                               Click="Undo_OnClick" />
-                <commonControls:ToolBarButton SmallIcon="/Assets/Icons/Chicago95/redo16.png"
+                <commonControls:ToolBarButton SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.EditRedo}"
                                               ToolTip.Tip="Redo"
                                               Click="Redo_OnClick" />
             </commonControls:ToolBar>

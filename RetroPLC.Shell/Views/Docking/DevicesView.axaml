@@ -10,13 +10,15 @@
             <Setter Property="BorderThickness" Value="0"/>
         </Style>
         <Style Selector="TreeViewItem">
-            <Setter Property="IsExpanded" Value="{ReflectionBinding IsExpanded}"/>
+            <Setter Property="IsExpanded"
+                    Value="{ReflectionBinding IsExpanded, Mode=TwoWay}"/>
             <Setter Property="MinHeight" Value="19"/>
             <Setter Property="Padding" Value="0"/>
         </Style>
     </UserControl.Styles>
 
-    <TreeView ItemsSource="{Binding Nodes}"
+    <TreeView x:Name="ProjectTree"
+              ItemsSource="{Binding Nodes}"
               HorizontalAlignment="Stretch"
               VerticalAlignment="Stretch">
         <TreeView.ContextMenu>
@@ -39,8 +41,7 @@
                               ItemsSource="{Binding Children}"
                               x:DataType="vm:DeviceTreeNode">
                 <StackPanel Orientation="Horizontal"
-                            Spacing="3"
-                            DoubleTapped="TreeNode_OnDoubleTapped">
+                            Spacing="3">
                     <Image Width="16"
                            Height="16"
                            Stretch="None"

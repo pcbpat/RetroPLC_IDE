@@ -2,10 +2,9 @@ using System;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.Media.Imaging;
-using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Classic.CommonControls.Dialogs;
+using RetroPLC.Icons;
 using RetroPLC.Shell.Models;
 using RetroPLC.Shell.ViewModels;
 
@@ -168,7 +167,7 @@ public partial class MainWindow : Window
         if (DataContext is MainWindowViewModel viewModel)
             viewModel.OpenProject(project);
 
-        Title = $"{project.Document.Name} - ConceptPLC IDE";
+        Title = $"{project.Document.Name} - RetroPLC IDE";
     }
 
     private async System.Threading.Tasks.Task ShowProjectError(string title, Exception exception)
@@ -183,15 +182,12 @@ public partial class MainWindow : Window
 
     private async void About_OnClick(object? sender, RoutedEventArgs e)
     {
-        var icon = new Bitmap(AssetLoader.Open(
-            new Uri("avares://RetroPLC.Shell/Assets/Icons/Chicago95/about32.png")));
-
         await AboutDialog.ShowDialog(this, new AboutDialogOptions
         {
-            Title = "ConceptPLC IDE",
+            Title = "RetroPLC IDE",
             SubTitle = "IEC 61131-3 Structured Text development environment",
-            Copyright = "Copyright © 2026 ConceptPLC contributors",
-            Icon = icon
+            Copyright = "Copyright © 2026 RetroPLC contributors",
+            Icon = Se98Icons.Actions.Size32.HelpAbout
         });
     }
 

@@ -92,7 +92,7 @@ public static class ProjectStore
 
         if (document.FormatVersion != ProjectDocument.CurrentFormatVersion)
             throw new InvalidDataException(
-                $"Project format {document.FormatVersion} is not supported by this version of ConceptPLC IDE.");
+                $"Project format {document.FormatVersion} is not supported by this version of RetroPLC IDE.");
         if (string.IsNullOrWhiteSpace(document.Name))
             throw new InvalidDataException("The project manifest does not contain a project name.");
         if (document.Tree.Count == 0)

@@ -1,9 +1,10 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:common="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia"
+        xmlns:icons="using:RetroPLC.Icons"
         x:Class="RetroPLC.Shell.Views.AddPouWindow"
         Title="Add POU"
-        Icon="/Assets/Icons/Chicago95/program.png"
+        Icon="avares://RetroPLC.Icons/Win98SE/SE98/apps/32/codeblocks.png"
         Width="500"
         Height="500"
         MinWidth="470"
@@ -24,7 +25,7 @@
             <Image Width="32" Height="32"
                    VerticalAlignment="Center"
                    RenderOptions.BitmapInterpolationMode="None"
-                   Source="/Assets/Icons/Chicago95/program.png" />
+                   Source="{x:Static icons:Se98Icons+Apps+Size32.Codeblocks}" />
             <TextBlock Grid.Column="1"
                        Margin="8,0,0,0"
                        VerticalAlignment="Center"

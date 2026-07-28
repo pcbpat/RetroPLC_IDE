@@ -3,7 +3,8 @@
 This project owns the IDE-facing STruC++ integration:
 
 - `IStrucppLanguageService` is the typed boundary used by editor/view-model code.
-- `StrucppLanguageService` maps that API to LSP JSON-RPC over stdio.
+- `StrucppLanguageService` maps that API to LSP over stdio using OmniSharp's
+  C# Language Server Protocol client.
 - `StrucppToolchain` resolves the packaged compiler, language server, and libraries.
 - `Tools/compiler/strucpp-linux` is the original STruC++ CLI used by Build and
   library import.

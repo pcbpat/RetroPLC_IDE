@@ -8,6 +8,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="OmniSharp.Extensions.LanguageClient" Version="0.19.9" />
+
     <Content Include="Tools\**">
       <Link>StrucppTools\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

@@ -1,9 +1,10 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:common="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia"
+        xmlns:icons="using:RetroPLC.Icons"
         x:Class="RetroPLC.Shell.Views.NewProjectWindow"
         Title="New Project"
-        Icon="/Assets/Icons/Chicago95/program.png"
+        Icon="avares://RetroPLC.Icons/Win98SE/SE98/apps/32/codeblocks.png"
         Width="590"
         Height="475"
         MinWidth="540"
@@ -47,7 +48,7 @@
                     <TreeViewItem Tag="Libraries">
                         <TreeViewItem.Header>
                             <StackPanel Orientation="Horizontal" Spacing="5">
-                                <Image Width="16" Height="16" Source="/Assets/Icons/Chicago95/folder.png" />
+                                <Image Width="16" Height="16" Source="{x:Static icons:Se98Icons+Places+Size16.Folder}" />
                                 <TextBlock Text="Libraries" />
                             </StackPanel>
                         </TreeViewItem.Header>
@@ -55,7 +56,7 @@
                     <TreeViewItem Tag="Projects">
                         <TreeViewItem.Header>
                             <StackPanel Orientation="Horizontal" Spacing="5">
-                                <Image Width="16" Height="16" Source="/Assets/Icons/Chicago95/folder.png" />
+                                <Image Width="16" Height="16" Source="{x:Static icons:Se98Icons+Places+Size16.Folder}" />
                                 <TextBlock Text="Projects" />
                             </StackPanel>
                         </TreeViewItem.Header>
@@ -78,31 +79,31 @@
 
                     <ListBoxItem Tag="StandardLibrary">
                         <StackPanel HorizontalAlignment="Center" Spacing="4">
-                            <Image Classes="template-icon" Source="/Assets/Icons/Chicago95/library.png" />
+                            <Image Classes="template-icon" Source="{x:Static icons:Se98Icons+Mimes+Size32.PackageXGeneric}" />
                             <TextBlock Text="Standard library" TextAlignment="Center" TextWrapping="Wrap" />
                         </StackPanel>
                     </ListBoxItem>
                     <ListBoxItem Tag="EmptyLibrary">
                         <StackPanel HorizontalAlignment="Center" Spacing="4">
-                            <Image Classes="template-icon" Source="/Assets/Icons/Chicago95/library.png" />
+                            <Image Classes="template-icon" Source="{x:Static icons:Se98Icons+Mimes+Size32.PackageXGeneric}" />
                             <TextBlock Text="Empty library" TextAlignment="Center" TextWrapping="Wrap" />
                         </StackPanel>
                     </ListBoxItem>
                     <ListBoxItem Tag="ExternalLibrary">
                         <StackPanel HorizontalAlignment="Center" Spacing="4">
-                            <Image Classes="template-icon" Source="/Assets/Icons/Chicago95/library.png" />
+                            <Image Classes="template-icon" Source="{x:Static icons:Se98Icons+Mimes+Size32.PackageXGeneric}" />
                             <TextBlock Text="External library" TextAlignment="Center" TextWrapping="Wrap" />
                         </StackPanel>
                     </ListBoxItem>
                     <ListBoxItem Tag="StandardProject" IsVisible="False">
                         <StackPanel HorizontalAlignment="Center" Spacing="4">
-                            <Image Classes="template-icon" Source="/Assets/Icons/Chicago95/application.png" />
+                            <Image Classes="template-icon" Source="{x:Static icons:Se98Icons+Apps+Size32.Codeblocks}" />
                             <TextBlock Text="Standard project" TextAlignment="Center" TextWrapping="Wrap" />
                         </StackPanel>
                     </ListBoxItem>
                     <ListBoxItem Tag="EmptyProject" IsVisible="False">
                         <StackPanel HorizontalAlignment="Center" Spacing="4">
-                            <Image Classes="template-icon" Source="/Assets/Icons/Chicago95/application.png" />
+                            <Image Classes="template-icon" Source="{x:Static icons:Se98Icons+Apps+Size32.Codeblocks}" />
                             <TextBlock Text="Empty project" TextAlignment="Center" TextWrapping="Wrap" />
                         </StackPanel>
                     </ListBoxItem>
@@ -128,7 +129,7 @@
                      Text="Library1" />
 
             <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Text="Location:" />
-            <TextBox x:Name="LocationBox" Grid.Row="1" Grid.Column="1" Text="Documents/ConceptPLC" />
+            <TextBox x:Name="LocationBox" Grid.Row="1" Grid.Column="1" Text="Documents/RetroPLC" />
             <Button Grid.Row="1" Grid.Column="2"
                     Width="28" Margin="5,0,0,0"
                     Content="..."

@@ -1,9 +1,10 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:common="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia"
+        xmlns:icons="using:RetroPLC.Icons"
         x:Class="RetroPLC.Shell.Views.ImportCodesysLibraryWindow"
         Title="Import CODESYS Library"
-        Icon="/Assets/Icons/Chicago95/library.png"
+        Icon="avares://RetroPLC.Icons/Win98SE/SE98/mimes/32/package-x-generic.png"
         Width="540"
         Height="330"
         CanResize="False"
@@ -21,7 +22,7 @@
             <Image Width="32" Height="32"
                    VerticalAlignment="Center"
                    RenderOptions.BitmapInterpolationMode="None"
-                   Source="/Assets/Icons/Chicago95/library.png" />
+                   Source="{x:Static icons:Se98Icons+Mimes+Size32.PackageXGeneric}" />
             <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center"
                        Text="Convert a CODESYS library to an STruCpp .stlib" />
         </Grid>

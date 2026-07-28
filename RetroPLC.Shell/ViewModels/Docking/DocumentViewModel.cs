@@ -12,7 +12,10 @@ namespace RetroPLC.Shell.ViewModels.Docking;
 
 public sealed class DocumentViewModel : Document
 {
+    private readonly string _baseTitle;
     private CancellationTokenSource? _changeDebounce;
+    private string _savedText;
+    private bool _isDirty;
     private int _version = 1;
     private StrucppRange? _pendingNavigation;
 
@@ -20,8 +23,10 @@ public sealed class DocumentViewModel : Document
     {
         FilePath = filePath;
         Document = document;
+        _baseTitle = Path.GetFileName(filePath);
+        _savedText = document.Text;
         Id = filePath;
-        Title = Path.GetFileName(filePath);
+        Title = _baseTitle;
         Document.TextChanged += OnDocumentTextChanged;
     }
 
@@ -77,10 +82,14 @@ public sealed class DocumentViewModel : Document
 
     public int Version => _version;
 
+    public bool IsDirty => _isDirty;
+
     public void Save()
     {
         var text = Document.Text;
         File.WriteAllText(FilePath, text);
+        _savedText = text;
+        UpdateDirtyState();
         Saved?.Invoke(this, text);
     }
 
@@ -195,6 +204,7 @@ public sealed class DocumentViewModel : Document
 
     private void OnDocumentTextChanged(object? sender, EventArgs e)
     {
+        UpdateDirtyState();
         var version = Interlocked.Increment(ref _version);
         var text = Document.Text;
         var previousDebounce = Interlocked.Exchange(
@@ -203,6 +213,16 @@ public sealed class DocumentViewModel : Document
         previousDebounce?.Cancel();
         previousDebounce?.Dispose();
         _ = PublishChangeAfterDelayAsync(text, version, _changeDebounce.Token);
+    }
+
+    private void UpdateDirtyState()
+    {
+        var isDirty = !string.Equals(Document.Text, _savedText, StringComparison.Ordinal);
+        if (_isDirty == isDirty)
+            return;
+
+        _isDirty = isDirty;
+        Title = isDirty ? $"{_baseTitle} •" : _baseTitle;
     }
 
     private async Task PublishChangeAfterDelayAsync(

@@ -1,5 +1,6 @@
 using System;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
@@ -12,13 +13,27 @@ namespace RetroPLC.Shell.Views.Docking;
 
 public partial class DevicesView : UserControl
 {
-    public DevicesView() => InitializeComponent();
-
-    private void TreeNode_OnDoubleTapped(object? sender, TappedEventArgs e)
+    public DevicesView()
     {
-        if (sender is Control { DataContext: DeviceTreeNode node }
-            && DataContext is DevicesViewModel viewModel
-            && viewModel.TryOpenNode(node))
+        InitializeComponent();
+        ProjectTree.AddHandler(
+            PointerPressedEvent,
+            Tree_OnPointerPressed,
+            RoutingStrategies.Tunnel);
+    }
+
+    private void Tree_OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.ClickCount != 2 || e.Source is not Control source)
+            return;
+
+        if (source is ToggleButton || source.FindAncestorOfType<ToggleButton>() is not null)
+            return;
+
+        var item = source as TreeViewItem ?? source.FindAncestorOfType<TreeViewItem>();
+        if (item?.DataContext is DeviceTreeNode node &&
+            DataContext is DevicesViewModel viewModel &&
+            viewModel.TryOpenNode(node))
         {
             e.Handled = true;
         }

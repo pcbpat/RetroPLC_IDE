@@ -8,7 +8,7 @@ public sealed class StrucppLanguageService : IStrucppLanguageService
     private readonly SemaphoreSlim _lifecycle = new(1, 1);
     private readonly ConcurrentDictionary<string, string> _documentTexts =
         new(StringComparer.OrdinalIgnoreCase);
-    private LspJsonRpcClient? _client;
+    private OmniSharpLspClient? _client;
     private string? _projectDirectory;
 
     public event EventHandler<StrucppDiagnosticsEventArgs>? DiagnosticsPublished;
@@ -27,30 +27,14 @@ public sealed class StrucppLanguageService : IStrucppLanguageService
             await StopCoreAsync(cancellationToken).ConfigureAwait(false);
 
             _projectDirectory = Path.GetFullPath(projectDirectory);
-            var projectUri = ToFileUri(_projectDirectory);
-            var projectName = Path.GetFileName(_projectDirectory);
-            var client = LspJsonRpcClient.Start(
+            var client = await OmniSharpLspClient.StartAsync(
                 StrucppToolchain.GetLanguageServerPath(),
                 _projectDirectory,
                 HandleServerRequestAsync,
                 HandleNotification,
-                RaiseServerError);
+                RaiseServerError,
+                cancellationToken).ConfigureAwait(false);
             _client = client;
-
-            try
-            {
-                await client.RequestAsync(
-                    "initialize",
-                    BuildInitializeParameters(projectUri, projectName),
-                    cancellationToken).ConfigureAwait(false);
-                await client.NotifyAsync(
-                    "initialized", new JsonObject(), cancellationToken).ConfigureAwait(false);
-            }
-            catch
-            {
-                await StopCoreAsync(CancellationToken.None).ConfigureAwait(false);
-                throw;
-            }
         }
         finally
         {
@@ -267,7 +251,7 @@ public sealed class StrucppLanguageService : IStrucppLanguageService
         return ParseWorkspaceEdit(result, oldName);
     }
 
-    private LspJsonRpcClient Client =>
+    private OmniSharpLspClient Client =>
         _client ?? throw new InvalidOperationException(
             "The STruC++ language service has not been started.");
 
@@ -300,10 +284,6 @@ public sealed class StrucppLanguageService : IStrucppLanguageService
         {
             "workspace/configuration" => Task.FromResult<JsonNode?>(
                 BuildConfigurationResponse(parameters)),
-            "workspace/workspaceFolders" => Task.FromResult<JsonNode?>(
-                BuildWorkspaceFolders()),
-            "client/registerCapability" or "client/unregisterCapability" =>
-                Task.FromResult<JsonNode?>(null),
             _ => throw new NotSupportedException(
                 $"Unsupported language-server request: {method}")
         };
@@ -337,21 +317,6 @@ public sealed class StrucppLanguageService : IStrucppLanguageService
         return result;
     }
 
-    private JsonArray BuildWorkspaceFolders()
-    {
-        if (_projectDirectory is null)
-            return [];
-
-        return new JsonArray
-        {
-            new JsonObject
-            {
-                ["uri"] = ToFileUri(_projectDirectory),
-                ["name"] = Path.GetFileName(_projectDirectory)
-            }
-        };
-    }
-
     private JsonObject BuildConfiguration() => new()
     {
         ["libraryPaths"] = new JsonArray
@@ -369,49 +334,6 @@ public sealed class StrucppLanguageService : IStrucppLanguageService
         ["analyzeDelay"] = 350,
         ["formatOnSave"] = false
     };
-
-    private static JsonObject BuildInitializeParameters(string projectUri, string projectName) =>
-        new()
-        {
-            ["processId"] = Environment.ProcessId,
-            ["clientInfo"] = new JsonObject
-            {
-                ["name"] = "ConceptPLC IDE",
-                ["version"] = "1.0.0"
-            },
-            ["rootUri"] = projectUri,
-            ["workspaceFolders"] = new JsonArray
-            {
-                new JsonObject { ["uri"] = projectUri, ["name"] = projectName }
-            },
-            ["capabilities"] = new JsonObject
-            {
-                ["general"] = new JsonObject
-                {
-                    ["positionEncodings"] = new JsonArray { "utf-16" }
-                },
-                ["workspace"] = new JsonObject
-                {
-                    ["configuration"] = true,
-                    ["workspaceFolders"] = true
-                },
-                ["textDocument"] = new JsonObject
-                {
-                    ["synchronization"] = new JsonObject { ["didSave"] = true },
-                    ["publishDiagnostics"] = new JsonObject { ["versionSupport"] = true },
-                    ["documentSymbol"] = new JsonObject
-                    {
-                        ["hierarchicalDocumentSymbolSupport"] = true
-                    },
-                    ["completion"] = new JsonObject
-                    {
-                        ["completionItem"] = new JsonObject { ["snippetSupport"] = true }
-                    },
-                    ["rename"] = new JsonObject { ["prepareSupport"] = true }
-                }
-            },
-            ["trace"] = "off"
-        };
 
     private static IReadOnlyList<StrucppDocumentSymbol> ParseDocumentSymbols(JsonNode? result)
     {

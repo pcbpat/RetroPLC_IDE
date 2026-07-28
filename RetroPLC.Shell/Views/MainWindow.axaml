@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:RetroPLC.Shell.ViewModels"
         xmlns:behaviors="using:RetroPLC.Shell.Controls"
+        xmlns:icons="using:RetroPLC.Icons"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:commonControls="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia"
@@ -9,8 +10,8 @@
         x:Class="RetroPLC.Shell.Views.MainWindow"
         x:Name="MainWindowView"
         x:DataType="vm:MainWindowViewModel"
-        Icon="/Assets/avalonia-logo.ico"
-        Title="ConceptPLC IDE"
+        Icon="avares://RetroPLC.Icons/Win98SE/SE98/apps/32/codeblocks.png"
+        Title="RetroPLC IDE"
         KeyDown="MainWindow_OnKeyDown"
         FontSize="{Binding TextSize}"
         Width="1100"
@@ -230,7 +231,7 @@
                 </MenuItem>
 
                 <MenuItem Header="_Help">
-                    <MenuItem Header="_About ConceptPLC IDE" Click="About_OnClick" />
+                    <MenuItem Header="_About RetroPLC IDE" Click="About_OnClick" />
                 </MenuItem>
             </Menu>
 
@@ -243,52 +244,52 @@
                                     GrayscaleIcons="True">
                 <commonControls:RebarHandle />
                 <commonControls:ToolBarButton Text="Go Online"
-                                              LargeIcon="/Assets/Icons/Chicago95/online24.png"
-                                              SmallIcon="/Assets/Icons/Chicago95/online16.png"
+                                              LargeIcon="{x:Static icons:Se98Icons+Devices+Size24.NetworkWired}"
+                                              SmallIcon="{x:Static icons:Se98Icons+Devices+Size16.NetworkWired}"
                                               Command="{Binding GoOnlineCommand}" />
                 <commonControls:ToolBarButton Text="Go Offline"
-                                              LargeIcon="/Assets/Icons/Chicago95/offline24.png"
-                                              SmallIcon="/Assets/Icons/Chicago95/offline16.png"
+                                              LargeIcon="{x:Static icons:Se98Icons+Devices+Size24.NetworkWiredDisconnected}"
+                                              SmallIcon="{x:Static icons:Se98Icons+Devices+Size16.NetworkWiredDisconnected}"
                                               Command="{Binding GoOfflineCommand}" />
                 <commonControls:ToolBarButton Text="Login"
-                                              LargeIcon="/Assets/Icons/Chicago95/login24.png"
-                                              SmallIcon="/Assets/Icons/Chicago95/login16.png"
+                                              LargeIcon="{x:Static icons:Se98Icons+Apps+Size24.PreferencesSystemLogin}"
+                                              SmallIcon="{x:Static icons:Se98Icons+Apps+Size16.PreferencesSystemLogin}"
                                               Command="{Binding LoginCommand}" />
                 <Separator />
                 <commonControls:ToolBarButton Text="Run"
-                                              LargeIcon="/Assets/Icons/Chicago95/run24.png"
-                                              SmallIcon="/Assets/Icons/Chicago95/run16.png"
+                                              LargeIcon="{x:Static icons:Se98Icons+Actions+Size24.MediaPlaybackStart}"
+                                              SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.MediaPlaybackStart}"
                                               Command="{Binding RunCommand}" />
                 <commonControls:ToolBarButton Text="Stop"
-                                              LargeIcon="/Assets/Icons/Chicago95/stop24.png"
-                                              SmallIcon="/Assets/Icons/Chicago95/stop16.png"
+                                              LargeIcon="{x:Static icons:Se98Icons+Actions+Size24.MediaPlaybackStop}"
+                                              SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.MediaPlaybackStop}"
                                               Command="{Binding StopCommand}" />
                 <commonControls:ToolBarButton Text="Reset"
-                                              LargeIcon="/Assets/Icons/Chicago95/reset24.png"
-                                              SmallIcon="/Assets/Icons/Chicago95/reset16.png"
+                                              LargeIcon="{x:Static icons:Se98Icons+Actions+Size24.ViewRefresh}"
+                                              SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.ViewRefresh}"
                                               Command="{Binding ResetPlcCommand}" />
                 <Separator />
                 <commonControls:ToolBarButton Text="Build"
-                                              LargeIcon="/Assets/Icons/Chicago95/build24.png"
-                                              SmallIcon="/Assets/Icons/Chicago95/build16.png"
+                                              LargeIcon="{x:Static icons:Se98Icons+Actions+Size24.SystemRun}"
+                                              SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.SystemRun}"
                                               Command="{Binding BuildCommand}" />
                 <commonControls:ToolBarButton Text="Download"
-                                              LargeIcon="/Assets/Icons/Chicago95/download24.png"
-                                              SmallIcon="/Assets/Icons/Chicago95/download16.png"
+                                              LargeIcon="{x:Static icons:Se98Icons+Actions+Size24.Download}"
+                                              SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.Download}"
                                               Command="{Binding DownloadCommand}" />
                 <Separator />
                 <commonControls:ToolBarButton Text="Reset Layout"
-                                              LargeIcon="/Assets/Icons/Chicago95/layout24.png"
-                                              SmallIcon="/Assets/Icons/Chicago95/layout16.png"
+                                              LargeIcon="{x:Static icons:Se98Icons+Actions+Size24.ViewRestore}"
+                                              SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.ViewRestore}"
                                               Command="{Binding ResetLayoutCommand}" />
                 <commonControls:ToolBarButton Text="Terminal"
-                                              LargeIcon="/Assets/Icons/Chicago95/terminal24.png"
-                                              SmallIcon="/Assets/Icons/Chicago95/terminal16.png"
+                                              LargeIcon="{x:Static icons:Se98Icons+Apps+Size24.UtilitiesTerminal}"
+                                              SmallIcon="{x:Static icons:Se98Icons+Apps+Size16.UtilitiesTerminal}"
                                               Command="{Binding OpenTerminalCommand}" />
                 <Separator />
                 <commonControls:ToolBarButton Text="About"
-                                              LargeIcon="/Assets/Icons/Chicago95/about24.png"
-                                              SmallIcon="/Assets/Icons/Chicago95/about16.png"
+                                              LargeIcon="{x:Static icons:Se98Icons+Actions+Size24.HelpAbout}"
+                                              SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.HelpAbout}"
                                               Click="About_OnClick" />
             </commonControls:ToolBar>
 
@@ -317,7 +318,7 @@
                                        FontSize="{DynamicResource {x:Static commonControls:NonClientMetrics.CaptionFontSizeKey}}"
                                        FontWeight="Bold"
                                        Foreground="{DynamicResource {x:Static commonControls:SystemColors.ActiveCaptionTextBrushKey}}"
-                                       Text="Welcome to ConceptPLC IDE" />
+                                       Text="Welcome to RetroPLC IDE" />
                         </Border>
 
                         <StackPanel Grid.Row="1"

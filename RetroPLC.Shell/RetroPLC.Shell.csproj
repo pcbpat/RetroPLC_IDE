@@ -5,6 +5,7 @@
         <Nullable>enable</Nullable>
         <ApplicationManifest>app.manifest</ApplicationManifest>
         <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+        <BuildInParallel>false</BuildInParallel>
         <RootNamespace>RetroPLC.Shell</RootNamespace>
     </PropertyGroup>
 
@@ -22,6 +23,7 @@
     </ItemGroup>
 
     <ItemGroup>
+        <ProjectReference Include="..\RetroPLC.Icons\RetroPLC.Icons.csproj" />
         <ProjectReference Include="..\RetroPLC.LanguageServerHost\RetroPLC.LanguageServerHost.csproj" />
         <PackageReference Include="Avalonia" Version="12.0.3"/>
         <PackageReference Include="Avalonia.Desktop" Version="12.0.3"/>

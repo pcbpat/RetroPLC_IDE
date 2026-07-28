@@ -4,9 +4,8 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using Avalonia.Media;
-using Avalonia.Media.Imaging;
-using Avalonia.Platform;
 using RetroPLC.LanguageServerHost;
+using RetroPLC.Icons;
 using Dock.Model.Mvvm.Controls;
 using RetroPLC.Shell.Models;
 
@@ -139,13 +138,17 @@ public sealed class DevicesViewModel : Tool
 
     public void LoadProject(ProjectDocument document, string projectDirectory)
     {
-        if (!string.Equals(_projectDirectory, projectDirectory, StringComparison.OrdinalIgnoreCase))
+        var isSameProject = string.Equals(
+            _projectDirectory,
+            projectDirectory,
+            StringComparison.OrdinalIgnoreCase);
+        if (!isSameProject)
             _documentSymbols.Clear();
         _currentProject = document;
         _projectDirectory = projectDirectory;
         SynchronizeProjectFiles(document, projectDirectory);
         SynchronizeLibraries(document, projectDirectory);
-        LoadProjectTree(document, projectDirectory);
+        LoadProjectTree(document, projectDirectory, isSameProject);
     }
 
     public bool RefreshProject(ProjectDocument document, string projectDirectory)
@@ -184,20 +187,66 @@ public sealed class DevicesViewModel : Tool
         LoadProjectTree(_currentProject, _projectDirectory);
     }
 
-    private void LoadProjectTree(ProjectDocument document, string projectDirectory)
+    private void LoadProjectTree(
+        ProjectDocument document,
+        string projectDirectory,
+        bool preserveExpansion = true)
     {
-        Nodes.Clear();
+        var expansionState = preserveExpansion
+            ? CaptureExpansionState(Nodes)
+            : [];
+        var newNodes = new List<DeviceTreeNode>();
+
         for (var index = 0; index < document.Tree.Count; index++)
         {
             var definition = document.Tree[index];
             if (index == 0)
             {
-                Nodes.Add(CreateProjectRootNode(definition, projectDirectory));
+                newNodes.Add(CreateProjectRootNode(definition, projectDirectory));
                 continue;
             }
 
             foreach (var node in CreateTreeNodes(definition, projectDirectory))
-                Nodes.Add(node);
+                newNodes.Add(node);
+        }
+
+        RestoreExpansionState(newNodes, expansionState);
+        Nodes.Clear();
+        foreach (var node in newNodes)
+            Nodes.Add(node);
+    }
+
+    private static Dictionary<string, bool> CaptureExpansionState(
+        IEnumerable<DeviceTreeNode> nodes)
+    {
+        var state = new Dictionary<string, bool>(StringComparer.Ordinal);
+        VisitNodes(nodes, "", (key, node) => state[key] = node.IsExpanded);
+        return state;
+    }
+
+    private static void RestoreExpansionState(
+        IEnumerable<DeviceTreeNode> nodes,
+        IReadOnlyDictionary<string, bool> state) =>
+        VisitNodes(nodes, "", (key, node) =>
+        {
+            if (state.TryGetValue(key, out var isExpanded))
+                node.IsExpanded = isExpanded;
+        });
+
+    private static void VisitNodes(
+        IEnumerable<DeviceTreeNode> nodes,
+        string parentKey,
+        Action<string, DeviceTreeNode> visit)
+    {
+        var occurrences = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var node in nodes)
+        {
+            var identity = $"{node.Name}\u001f{node.FilePath}\u001f{node.LibraryFileName}";
+            occurrences.TryGetValue(identity, out var occurrence);
+            occurrences[identity] = occurrence + 1;
+            var key = $"{parentKey}/{identity}\u001f{occurrence}";
+            visit(key, node);
+            VisitNodes(node.Children, key, visit);
         }
     }
 
@@ -649,7 +698,7 @@ public sealed class DeviceTreeNode(
     public string Name { get; } = name;
     public IImage Icon { get; } = icon;
     public IReadOnlyList<DeviceTreeNode> Children { get; } = children ?? [];
-    public bool IsExpanded { get; } = isExpanded;
+    public bool IsExpanded { get; set; } = isExpanded;
     public string? FilePath { get; } = filePath;
     public string? LibraryFileName { get; } = libraryFileName;
     public StrucppLocation? Location { get; } = location;
@@ -680,21 +729,21 @@ public sealed class DeviceTreeNode(
 
 internal static class DeviceIcons
 {
-    public static IImage Application { get; } = Load("application.png");
-    public static IImage Build { get; } = Load("build16.png");
-    public static IImage Controller { get; } = Load("controller.png");
-    public static IImage Device { get; } = Load("device.png");
-    public static IImage Display { get; } = Load("display.png");
-    public static IImage Folder { get; } = Load("folder.png");
-    public static IImage Globe { get; } = Load("globe.png");
-    public static IImage Library { get; } = Load("library.png");
-    public static IImage Network { get; } = Load("network.png");
-    public static IImage Program { get; } = Load("program.png");
-    public static IImage Settings { get; } = Load("settings.png");
-    public static IImage Software { get; } = Load("software.png");
-    public static IImage Pous { get; } = Load("pous.png");
-    public static IImage DataTypes { get; } = Load("data-types.png");
-    public static IImage Task { get; } = Load("task.png");
+    public static IImage Application { get; } = Se98Icons.Apps.Size16.Codeblocks;
+    public static IImage Build { get; } = Se98Icons.Actions.Size16.SystemRun;
+    public static IImage Controller { get; } = Se98Icons.Devices.Size16.Computer;
+    public static IImage Device { get; } = Se98Icons.Devices.Size16.DriveHarddisk;
+    public static IImage Display { get; } = Se98Icons.Devices.Size16.VideoDisplay;
+    public static IImage Folder { get; } = Se98Icons.Places.Size16.Folder;
+    public static IImage Globe { get; } = Se98Icons.Places.Size16.NetworkWorkgroup;
+    public static IImage Library { get; } = Se98Icons.Mimes.Size16.PackageXGeneric;
+    public static IImage Network { get; } = Se98Icons.Devices.Size16.NetworkWired;
+    public static IImage Program { get; } = Se98Icons.Mimes.Size16.TextXScript;
+    public static IImage Settings { get; } = Se98Icons.Apps.Size16.PreferencesSystem;
+    public static IImage Software { get; } = Se98Icons.Apps.Size16.SystemSoftwareInstaller;
+    public static IImage Pous { get; } = Se98Icons.Places.Size16.FolderDocuments;
+    public static IImage DataTypes { get; } = Se98Icons.Mimes.Size16.TextXGeneric;
+    public static IImage Task { get; } = Se98Icons.Actions.Size16.Appointment;
 
     public static IImage Get(string name) => name switch
     {
@@ -732,11 +781,5 @@ internal static class DeviceIcons
         if (ReferenceEquals(icon, DataTypes)) return "data-types";
         if (ReferenceEquals(icon, Task)) return "task";
         return "folder";
-    }
-
-    private static Bitmap Load(string fileName)
-    {
-        var uri = new Uri($"avares://RetroPLC.Shell/Assets/Icons/Chicago95/{fileName}");
-        return new Bitmap(AssetLoader.Open(uri));
     }
 }

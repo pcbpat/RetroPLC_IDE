@@ -24,7 +24,7 @@ public partial class NewProjectWindow : Window
 
         LocationBox.Text = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-            "ConceptPLC");
+            "RetroPLC");
 
         if (CategoryTree.Items[0] is TreeViewItem libraries)
             libraries.IsSelected = true;
