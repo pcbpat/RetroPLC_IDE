@@ -7,6 +7,7 @@ using Avalonia.Media;
 using RetroPLC.LanguageServerHost;
 using RetroPLC.Icons;
 using Dock.Model.Mvvm.Controls;
+using RetroPLC.Shell.Language;
 using RetroPLC.Shell.Models;
 
 namespace RetroPLC.Shell.ViewModels.Docking;
@@ -18,6 +19,9 @@ public sealed class DevicesViewModel : Tool
     private readonly Action<NewPouDefinition>? _addPou;
     private readonly Action<string>? _openLibrary;
     private readonly Action<CodesysLibraryImport>? _importCodesysLibrary;
+    private readonly Action<string>? _addConfiguration;
+    private readonly Action<NewResourceDefinition, string>? _addResource;
+    private readonly Action<NewTaskDefinition, string, string>? _addTask;
     private readonly Dictionary<string, IReadOnlyList<StrucppDocumentSymbol>> _documentSymbols =
         new(StringComparer.OrdinalIgnoreCase);
     private ProjectDocument? _currentProject;
@@ -28,13 +32,19 @@ public sealed class DevicesViewModel : Tool
         Action<NewPouDefinition>? addPou = null,
         Action<string>? openLibrary = null,
         Action<CodesysLibraryImport>? importCodesysLibrary = null,
-        Action<StrucppLocation>? navigateToLocation = null)
+        Action<StrucppLocation>? navigateToLocation = null,
+        Action<string>? addConfiguration = null,
+        Action<NewResourceDefinition, string>? addResource = null,
+        Action<NewTaskDefinition, string, string>? addTask = null)
     {
         _openDocument = openDocument;
         _navigateToLocation = navigateToLocation;
         _addPou = addPou;
         _openLibrary = openLibrary;
         _importCodesysLibrary = importCodesysLibrary;
+        _addConfiguration = addConfiguration;
+        _addResource = addResource;
+        _addTask = addTask;
         Nodes = [];
     }
 
@@ -44,95 +54,39 @@ public sealed class DevicesViewModel : Tool
     [
         new(projectName, DeviceIcons.Application,
         [
-            new("Software", DeviceIcons.Software,
+            new("Data Types", DeviceIcons.DataTypes, [], false),
+            new("POUs", DeviceIcons.Pous,
             [
-                new("Application", DeviceIcons.Application,
+                new("Programs", DeviceIcons.Folder,
                 [
-                    new("POUs", DeviceIcons.Pous,
-                    [
-                        new("Programs", DeviceIcons.Folder,
-                        [
-                            new("Main", DeviceIcons.Program,
-                                filePath: "ProjectFiles/POUs/Programs/Main.st"),
-                            new("Blink", DeviceIcons.Program,
-                                filePath: "ProjectFiles/POUs/Programs/Blink.st")
-                        ], false),
-                        new("Function Blocks", DeviceIcons.Folder,
-                        [
-                            new("Counter", DeviceIcons.Program,
-                                filePath: "ProjectFiles/POUs/FunctionBlocks/Counter.st"),
-                            new("MotorController", DeviceIcons.Program,
-                                filePath: "ProjectFiles/POUs/FunctionBlocks/MotorController.st"),
-                            new("PID_Controller", DeviceIcons.Program,
-                                filePath: "ProjectFiles/POUs/FunctionBlocks/PID_Controller.st")
-                        ], false),
-                        new("Functions", DeviceIcons.Folder,
-                        [
-                            new("ScaleAnalog", DeviceIcons.Program,
-                                filePath: "ProjectFiles/POUs/Functions/ScaleAnalog.st")
-                        ], false),
-                        new("Interfaces", DeviceIcons.Folder,
-                        [
-                            new("IRunnable", DeviceIcons.Program,
-                                filePath: "ProjectFiles/POUs/Interfaces/IRunnable.st")
-                        ], false)
-                    ]),
-                    new("Data Types", DeviceIcons.DataTypes,
-                    [
-                        new("Structures", DeviceIcons.Folder,
-                        [
-                            new("MachineConfig (STRUCT)", DeviceIcons.Settings,
-                                filePath: "ProjectFiles/DataTypes/MachineConfig.st")
-                        ], false),
-                        new("Enumerations", DeviceIcons.Folder,
-                        [
-                            new("MotorState (ENUM)", DeviceIcons.Settings,
-                                filePath: "ProjectFiles/DataTypes/MotorState.st")
-                        ], false),
-                        new("Aliases and Subranges", DeviceIcons.Folder, isExpanded: false)
-                    ], false),
-                    new("Global Variable Lists", DeviceIcons.Globe,
-                    [
-                        new("GVL", DeviceIcons.Globe,
-                            filePath: "ProjectFiles/GlobalVariables/GVL.st"),
-                        new("Persistent Variables", DeviceIcons.Globe,
-                            filePath: "ProjectFiles/GlobalVariables/PersistentVariables.st"),
-                        new("Global Constants", DeviceIcons.Globe,
-                            filePath: "ProjectFiles/GlobalVariables/GlobalConstants.st")
-                    ], false),
-                    new("Tests", DeviceIcons.Task,
-                    [
-                        new("CounterTests", DeviceIcons.Task,
-                            filePath: "ProjectFiles/Tests/CounterTests.st"),
-                        new("MotorControlTests", DeviceIcons.Task,
-                            filePath: "ProjectFiles/Tests/MotorControlTests.st"),
-                        new("PIDControllerTests", DeviceIcons.Task,
-                            filePath: "ProjectFiles/Tests/PIDControllerTests.st")
-                    ], false)
-                ]),
-                new("Libraries", DeviceIcons.Library,
-                    CreateLibraryNodes(), false),
-                new("Build and Deployment", DeviceIcons.Settings,
-                [
-                    new("Compiler Settings (C++17)", DeviceIcons.Settings),
-                    new("Runtime Library", DeviceIcons.Library),
-                    new("Generated C++ Sources", DeviceIcons.Program)
+                    new("Main", DeviceIcons.Program,
+                        filePath: "ProjectFiles/POUs/Programs/Main.st"),
+                    new("Blink", DeviceIcons.Program,
+                        filePath: "ProjectFiles/POUs/Programs/Blink.st")
                 ], false),
-                new("Project Documentation", DeviceIcons.Folder, isExpanded: false)
-            ]),
-            new("Hardware", DeviceIcons.Controller,
-            [
-                new("MainConfiguration (CONFIGURATION)", DeviceIcons.Settings,
+                new("Function Blocks", DeviceIcons.Folder,
                 [
-                    CreateController("PLC_1 (RESOURCE · 192.168.0.10)", true),
-                    CreateController("PLC_2 (RESOURCE · 192.168.0.11)", false)
-                ]),
-                new("I/O Mapping", DeviceIcons.Network,
+                    new("MotorController", DeviceIcons.Program,
+                        filePath: "ProjectFiles/POUs/FunctionBlocks/MotorController.st")
+                ], false),
+                new("Functions", DeviceIcons.Folder,
                 [
-                    new("Process Inputs", DeviceIcons.Device),
-                    new("Process Outputs", DeviceIcons.Device)
+                    new("Scale", DeviceIcons.Program,
+                        filePath: "ProjectFiles/POUs/Functions/Scale.st")
                 ], false)
-            ])
+            ]),
+            new("Interfaces", DeviceIcons.Folder,
+            [
+                new("IMotor", DeviceIcons.Program,
+                    filePath: "ProjectFiles/Interfaces/IMotor.st"),
+                new("IController", DeviceIcons.Program,
+                    filePath: "ProjectFiles/Interfaces/IController.st")
+            ], false),
+            new("Global Variable Lists", DeviceIcons.Globe, [], false),
+            new("Configurations", DeviceIcons.Controller, [], true),
+            new("Libraries", DeviceIcons.Library,
+                CreateLibraryNodes(), false),
+            new("Tests", DeviceIcons.Task, [], false)
         ])
     ];
 
@@ -146,9 +100,216 @@ public sealed class DevicesViewModel : Tool
             _documentSymbols.Clear();
         _currentProject = document;
         _projectDirectory = projectDirectory;
+        MigrateProjectTree(document);
         SynchronizeProjectFiles(document, projectDirectory);
         SynchronizeLibraries(document, projectDirectory);
         LoadProjectTree(document, projectDirectory, isSameProject);
+    }
+
+    /// <summary>
+    /// Canonical top-level section order for the flattened project tree.
+    /// </summary>
+    private static readonly string[] TopLevelSectionOrder =
+    [
+        "Data Types",
+        "POUs",
+        "Interfaces",
+        "Global Variable Lists",
+        "Configurations",
+        "Libraries",
+        "Tests"
+    ];
+
+    /// <summary>
+    /// Restructures project trees saved by earlier previews: the Software /
+    /// Application / Hardware wrappers are flattened away, Configuration
+    /// entries are moved to the top level, and RESOURCE / TASK children of
+    /// Configuration nodes are discarded because they are now parsed from the
+    /// CONFIGURATION source file itself.
+    /// </summary>
+    internal static void MigrateProjectTree(ProjectDocument document)
+    {
+        var root = document.Tree.FirstOrDefault();
+        if (root is null)
+            return;
+
+        var software = root.Children.FirstOrDefault(node => node.Name == "Software");
+        var hardware = root.Children.FirstOrDefault(node => node.Name == "Hardware");
+
+        if (software is null && hardware is null)
+        {
+            PruneLegacyConfigurationEntries(root.Children);
+            CleanConfigurationNodes(root.Children);
+            LiftInterfacesToTopLevel(root);
+            DropObsoleteSections(root.Children);
+            ReorderTopLevelSections(root);
+            return;
+        }
+
+        var moved = new List<ProjectNodeDefinition>();
+
+        if (software is not null)
+        {
+            var application = software.Children.FirstOrDefault(node => node.Name == "Application");
+            if (application is not null)
+            {
+                moved.AddRange(TakeNamed(
+                    application.Children,
+                    ["POUs", "Data Types", "Global Variable Lists", "Tests"]));
+                moved.AddRange(application.Children);
+            }
+
+            moved.AddRange(TakeNamed(
+                software.Children,
+                ["Libraries", "Build and Deployment", "Project Documentation"]));
+            root.Children.Remove(software);
+        }
+
+        if (hardware is not null)
+        {
+            var configurations = hardware.Children.FirstOrDefault(node =>
+                string.Equals(node.Name, "Configurations", StringComparison.Ordinal));
+            if (configurations is not null)
+                hardware.Children.Remove(configurations);
+            root.Children.Remove(hardware);
+            if (configurations is not null)
+                moved.Add(configurations);
+        }
+
+        foreach (var sectionName in TopLevelSectionOrder)
+        {
+            var section = moved.FirstOrDefault(node => node.Name == sectionName);
+            if (section is not null &&
+                root.Children.All(node => node.Name != sectionName))
+            {
+                root.Children.Add(section);
+            }
+        }
+
+        foreach (var section in moved)
+        {
+            if (!root.Children.Contains(section))
+                root.Children.Add(section);
+        }
+
+        PruneLegacyConfigurationEntries(root.Children);
+        CleanConfigurationNodes(root.Children);
+        LiftInterfacesToTopLevel(root);
+        DropObsoleteSections(root.Children);
+        ReorderTopLevelSections(root);
+    }
+
+    /// <summary>
+    /// Places top-level sections in the canonical order, keeping any unknown
+    /// sections (or extra top-level nodes) after the known ones.
+    /// </summary>
+    private static void ReorderTopLevelSections(ProjectNodeDefinition root)
+    {
+        var ordered = new List<ProjectNodeDefinition>();
+        foreach (var sectionName in TopLevelSectionOrder)
+        {
+            var section = root.Children.FirstOrDefault(node => node.Name == sectionName);
+            if (section is null)
+                continue;
+            ordered.Add(section);
+            root.Children.Remove(section);
+        }
+
+        ordered.AddRange(root.Children);
+        root.Children.Clear();
+        root.Children.AddRange(ordered);
+    }
+
+    /// <summary>
+    /// Interfaces used to be a folder under POUs; it is now a top-level
+    /// section placed after POUs.
+    /// </summary>
+    private static void LiftInterfacesToTopLevel(ProjectNodeDefinition root)
+    {
+        var pous = root.Children.FirstOrDefault(node => node.Name == "POUs");
+        var interfaces = pous?.Children.FirstOrDefault(node => node.Name == "Interfaces");
+        if (interfaces is null)
+            return;
+
+        pous!.Children.Remove(interfaces);
+        var existing = root.Children.FirstOrDefault(node => node.Name == "Interfaces");
+        if (existing is not null)
+        {
+            existing.Children.AddRange(interfaces.Children);
+            return;
+        }
+
+        var index = root.Children.FindIndex(node => node.Name == "POUs") + 1;
+        root.Children.Insert(index, interfaces);
+    }
+
+    /// <summary>
+    /// The Build and Deployment / Project Documentation sections are no
+    /// longer part of the project-tree design.
+    /// </summary>
+    private static void DropObsoleteSections(List<ProjectNodeDefinition> nodes)
+    {
+        nodes.RemoveAll(node => node.Name is "Build and Deployment" or "Project Documentation");
+    }
+
+    /// <summary>
+    /// Drops display-only CONFIGURATION / RESOURCE / TASK entries saved by
+    /// earlier previews (they carry no source file) and normalizes the names
+    /// of real configuration nodes to the bare IEC identifier.
+    /// </summary>
+    private static void PruneLegacyConfigurationEntries(IEnumerable<ProjectNodeDefinition> nodes)
+    {
+        foreach (var node in EnumerateDefinitions(nodes))
+        {
+            if (!IsConfigurationPath(node.FilePath))
+                continue;
+            node.Name = ProjectNodeKinds.GetElementName(node.Name);
+        }
+
+        var configurations = EnumerateDefinitions(nodes)
+            .FirstOrDefault(node => node.Name == "Configurations");
+        if (configurations is null)
+            return;
+
+        configurations.Children = configurations.Children
+            .Where(child => child.FilePath is not null)
+            .ToList();
+        foreach (var child in configurations.Children)
+        {
+            child.Kind = ProjectNodeKinds.Configuration;
+            child.Icon = "controller";
+        }
+    }
+
+    private static IReadOnlyList<ProjectNodeDefinition> TakeNamed(
+        IList<ProjectNodeDefinition> source,
+        IEnumerable<string> names)
+    {
+        var taken = new List<ProjectNodeDefinition>();
+        foreach (var name in names)
+        {
+            var node = source.FirstOrDefault(candidate => candidate.Name == name);
+            if (node is null)
+                continue;
+            source.Remove(node);
+            taken.Add(node);
+        }
+
+        return taken;
+    }
+
+    private static void CleanConfigurationNodes(IEnumerable<ProjectNodeDefinition> nodes)
+    {
+        foreach (var node in EnumerateDefinitions(nodes))
+        {
+            if (!IsConfigurationPath(node.FilePath))
+                continue;
+            node.Icon = "controller";
+            // RESOURCE / TASK / PROGRAM-instance / VAR_GLOBAL structure is
+            // parsed from the CONFIGURATION source file, so manifest children
+            // saved by earlier previews are stale and discarded.
+            node.Children.Clear();
+        }
     }
 
     public bool RefreshProject(ProjectDocument document, string projectDirectory)
@@ -276,6 +437,22 @@ public sealed class DevicesViewModel : Tool
     public void AddPou(NewPouDefinition definition) =>
         (_addPou ?? throw new InvalidOperationException("The project is not available."))(definition);
 
+    public void AddConfiguration(string name) =>
+        (_addConfiguration ?? throw new InvalidOperationException("The project is not available."))(name);
+
+    public void AddResource(NewResourceDefinition definition, DeviceTreeNode configurationNode) =>
+        (_addResource ?? throw new InvalidOperationException("The project is not available."))(
+            definition,
+            configurationNode.FilePath
+            ?? throw new InvalidOperationException("The configuration has no source file."));
+
+    public void AddTask(NewTaskDefinition definition, DeviceTreeNode resourceNode) =>
+        (_addTask ?? throw new InvalidOperationException("The project is not available."))(
+            definition,
+            resourceNode.FilePath
+            ?? throw new InvalidOperationException("The resource has no source file."),
+            ProjectNodeKinds.GetElementName(resourceNode.Name));
+
     public void ImportCodesysLibrary(CodesysLibraryImport import) =>
         (_importCodesysLibrary ?? throw new InvalidOperationException("The project is not available."))(import);
 
@@ -295,7 +472,6 @@ public sealed class DevicesViewModel : Tool
             .Where(child => !string.Equals(child.Name, "Build", StringComparison.Ordinal))
             .SelectMany(child => CreateTreeNodes(child, projectDirectory))
             .ToList();
-        children.Add(CreateBuildNode(projectDirectory));
 
         return new DeviceTreeNode(
             GetProjectTreeNodeDisplayName(definition),
@@ -303,7 +479,8 @@ public sealed class DevicesViewModel : Tool
             children,
             definition.IsExpanded,
             definition.FilePath,
-            definition.LibraryFileName);
+            definition.LibraryFileName,
+            kind: definition.Kind);
     }
 
     private DeviceTreeNode CreateTreeNode(
@@ -320,24 +497,184 @@ public sealed class DevicesViewModel : Tool
             children,
             definition.IsExpanded,
             definition.FilePath,
-            definition.LibraryFileName);
+            definition.LibraryFileName,
+            kind: definition.Kind);
     }
 
     private IReadOnlyList<DeviceTreeNode> CreateTreeNodes(
         ProjectNodeDefinition definition,
         string projectDirectory)
     {
+        if (IsConfigurationPath(definition.FilePath))
+            return [CreateConfigurationNode(definition, projectDirectory)];
+
         var symbolNodes = CreateDocumentSymbolNodes(definition, projectDirectory);
         return symbolNodes.Count > 0
             ? symbolNodes
             : [CreateTreeNode(definition, projectDirectory)];
     }
 
+    private static bool IsConfigurationPath(string? filePath)
+    {
+        if (filePath is null)
+            return false;
+        var normalized = NormalizeRelativePath(filePath);
+        return normalized.StartsWith("ProjectFiles/Configurations/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Builds the project-tree node for a CONFIGURATION source file. The
+    /// STruC++ language server reports no document symbols for configuration
+    /// files, so the CONFIGURATION / RESOURCE / TASK / PROGRAM-instance
+    /// structure is parsed from the source directly and rendered as transient
+    /// children (Global Variables, Resources, Tasks, Program Instances).
+    /// </summary>
+    private DeviceTreeNode CreateConfigurationNode(
+        ProjectNodeDefinition definition,
+        string projectDirectory)
+    {
+        var children = new List<DeviceTreeNode>();
+
+        if (definition.FilePath is { } relativePath)
+        {
+            var fullPath = Path.GetFullPath(Path.Combine(
+                projectDirectory,
+                relativePath.Replace('/', Path.DirectorySeparatorChar)));
+            if (File.Exists(fullPath))
+            {
+                var configurations = StConfigurationParser.Parse(File.ReadAllText(fullPath));
+                // A file normally holds one CONFIGURATION block. Each parsed
+                // block contributes its Global Variables and Resources folders
+                // directly under the file node, matching the target tree:
+                // Configuration -> { Global Variables, Resources -> Resource ->
+                // { Tasks, Program Instances } }.
+                foreach (var configuration in configurations)
+                {
+                    children.AddRange(CreateConfigurationFolders(
+                        configuration,
+                        relativePath,
+                        fullPath));
+                }
+            }
+        }
+
+        return new DeviceTreeNode(
+            GetProjectTreeNodeDisplayName(definition),
+            DeviceIcons.Get(definition.Icon),
+            children,
+            definition.IsExpanded,
+            definition.FilePath,
+            definition.LibraryFileName,
+            kind: definition.Kind);
+    }
+
+    private static IReadOnlyList<DeviceTreeNode> CreateConfigurationFolders(
+        StConfigurationSymbol configuration,
+        string relativePath,
+        string fullPath)
+    {
+        var globalVariables = configuration.Children
+            .Where(child => child.Kind == StConfigurationSymbolKinds.GlobalVariable)
+            .Select(symbol => CreateConfigurationSymbolNode(
+                symbol,
+                relativePath,
+                fullPath,
+                DeviceIcons.Settings))
+            .ToList();
+        var resources = configuration.Children
+            .Where(child => child.Kind == StConfigurationSymbolKinds.Resource)
+            .Select(symbol => CreateResourceNode(symbol, relativePath, fullPath))
+            .ToList();
+
+        return
+        [
+            new DeviceTreeNode(
+                "Global Variables",
+                DeviceIcons.Globe,
+                globalVariables,
+                false,
+                isTransient: true),
+            new DeviceTreeNode(
+                "Resources",
+                DeviceIcons.Controller,
+                resources,
+                true,
+                isTransient: true)
+        ];
+    }
+
+    private static DeviceTreeNode CreateResourceNode(
+        StConfigurationSymbol resource,
+        string relativePath,
+        string fullPath)
+    {
+        var tasks = resource.Children
+            .Where(child => child.Kind == StConfigurationSymbolKinds.Task)
+            .Select(task => new DeviceTreeNode(
+                task.DisplayName,
+                DeviceIcons.Task,
+                [],
+                true,
+                filePath: relativePath,
+                location: new StrucppLocation(fullPath, task.Range),
+                isTransient: true,
+                kind: StConfigurationSymbolKinds.Task))
+            .ToList();
+        // PROGRAM instances attached to a task with WITH are modeled as
+        // children of the TASK symbol by the parser; standalone instances
+        // live directly on the resource. Both belong to the resource-level
+        // "Program Instances" folder.
+        var programs = resource.Children
+            .Where(child => child.Kind == StConfigurationSymbolKinds.ProgramInstance)
+            .Concat(resource.Children
+                .Where(child => child.Kind == StConfigurationSymbolKinds.Task)
+                .SelectMany(task => task.Children))
+            .Select(program => CreateConfigurationSymbolNode(
+                program,
+                relativePath,
+                fullPath,
+                DeviceIcons.Program))
+            .ToList();
+        var children = new List<DeviceTreeNode>
+        {
+            new("Tasks", DeviceIcons.Task, tasks, true, isTransient: true),
+            new("Program Instances", DeviceIcons.Program, programs, true, isTransient: true)
+        };
+
+        return new DeviceTreeNode(
+            resource.DisplayName,
+            DeviceIcons.Controller,
+            children,
+            true,
+            filePath: relativePath,
+            location: new StrucppLocation(fullPath, resource.Range),
+            isTransient: true,
+            kind: StConfigurationSymbolKinds.Resource);
+    }
+
+    private static DeviceTreeNode CreateConfigurationSymbolNode(
+        StConfigurationSymbol symbol,
+        string relativePath,
+        string fullPath,
+        IImage icon) =>
+        new(
+            symbol.DisplayName,
+            icon,
+            [],
+            false,
+            filePath: relativePath,
+            location: new StrucppLocation(fullPath, symbol.Range),
+            isTransient: true);
+
     private IReadOnlyList<DeviceTreeNode> CreateDocumentSymbolNodes(
         ProjectNodeDefinition definition,
         string projectDirectory)
     {
-        if (definition.FilePath is not { } relativePath ||
+        // CONFIGURATION, RESOURCE and TASK nodes are modeled in the manifest
+        // (the language server reports no document symbols for them) so they
+        // render their declared children instead of LSP symbol nodes.
+        if (definition.Kind is not null ||
+            definition.FilePath is not { } relativePath ||
             !IsStructuredTextPath(relativePath))
         {
             return [];
@@ -351,7 +688,7 @@ public sealed class DevicesViewModel : Tool
 
         return symbols
             .Select(symbol => CreateDocumentSymbolNode(
-                IsPouPath(relativePath) ? symbol with { Detail = null } : symbol,
+                IsPouLikePath(relativePath) ? symbol with { Detail = null } : symbol,
                 relativePath,
                 fullPath))
             .ToList();
@@ -372,8 +709,17 @@ public sealed class DevicesViewModel : Tool
             location: new StrucppLocation(fullPath, symbol.SelectionRange),
             isTransient: true);
 
-    private static bool IsPouPath(string path) =>
-        NormalizeRelativePath(path).Contains("/POUs/", StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// POUs and Interfaces render as bare identifiers (the declaration kind
+    /// is obvious from the tree folder), so their document-symbol detail is
+    /// suppressed.
+    /// </summary>
+    private static bool IsPouLikePath(string path)
+    {
+        var normalized = NormalizeRelativePath(path);
+        return normalized.Contains("/POUs/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/Interfaces/", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static string FormatDocumentSymbol(StrucppDocumentSymbol symbol)
     {
@@ -400,63 +746,17 @@ public sealed class DevicesViewModel : Tool
                extension.Equals(".iecst", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static DeviceTreeNode CreateBuildNode(string projectDirectory)
-    {
-        var buildDirectory = Path.Combine(projectDirectory, "Build");
-        var children = Directory.Exists(buildDirectory)
-            ? CreateBuildChildren(projectDirectory, buildDirectory)
-            : [];
-        return new DeviceTreeNode("Build", DeviceIcons.Build, children, false);
-    }
-
-    private static IReadOnlyList<DeviceTreeNode> CreateBuildChildren(
-        string projectDirectory,
-        string directory)
-    {
-        var directories = Directory.EnumerateDirectories(directory)
-            .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
-            .Select(path => new DeviceTreeNode(
-                Path.GetFileName(path),
-                DeviceIcons.Folder,
-                CreateBuildChildren(projectDirectory, path),
-                false));
-        var files = Directory.EnumerateFiles(directory)
-            .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
-            .Select(path =>
-            {
-                var extension = Path.GetExtension(path);
-                var isCppDocument = extension.Equals(".cpp", StringComparison.OrdinalIgnoreCase) ||
-                                    extension.Equals(".hpp", StringComparison.OrdinalIgnoreCase);
-                var relativePath = Path.GetRelativePath(projectDirectory, path)
-                    .Replace(Path.DirectorySeparatorChar, '/');
-                return new DeviceTreeNode(
-                    Path.GetFileName(path),
-                    isCppDocument ? DeviceIcons.Program : DeviceIcons.Settings,
-                    filePath: isCppDocument ? relativePath : null);
-            });
-
-        return directories.Concat(files).ToList();
-    }
-
     private static void SynchronizeLibraries(ProjectDocument document, string projectDirectory)
     {
         var root = document.Tree.FirstOrDefault();
-        var software = root?.Children.FirstOrDefault(node => node.Name == "Software");
-        if (software is null)
+        if (root is null)
             return;
 
-        var application = software.Children.FirstOrDefault(node => node.Name == "Application");
-        var oldLibraries = application?.Children.FirstOrDefault(node => node.Name == "Libraries");
-        var libraries = software.Children.FirstOrDefault(node => node.Name == "Libraries")
-                        ?? oldLibraries
+        var libraries = root.Children.FirstOrDefault(node => node.Name == "Libraries")
                         ?? new ProjectNodeDefinition { Name = "Libraries", Icon = "library", IsExpanded = false };
-
-        if (oldLibraries is not null)
-            application!.Children.Remove(oldLibraries);
-        if (!software.Children.Contains(libraries))
+        if (!root.Children.Contains(libraries))
         {
-            var applicationIndex = application is null ? -1 : software.Children.IndexOf(application);
-            software.Children.Insert(applicationIndex + 1, libraries);
+            root.Children.Add(libraries);
         }
 
         libraries.Icon = "library";
@@ -504,6 +804,9 @@ public sealed class DevicesViewModel : Tool
                 Name = CreateProjectFileDisplayName(relativePath),
                 Icon = GetProjectFileIcon(relativePath),
                 FilePath = relativePath,
+                Kind = IsConfigurationPath(relativePath)
+                    ? ProjectNodeKinds.Configuration
+                    : null,
                 IsExpanded = true
             });
             category.Children = category.Children
@@ -548,29 +851,32 @@ public sealed class DevicesViewModel : Tool
         string relativePath)
     {
         var root = document.Tree.FirstOrDefault();
-        var software = FindChild(root, "Software");
-        var application = FindChild(software, "Application");
-        if (application is null)
+        if (root is null)
             return null;
 
         var segments = relativePath.Split('/');
         if (segments.Length >= 4 && segments[1].Equals("POUs", StringComparison.OrdinalIgnoreCase))
         {
-            var pous = FindChild(application, "POUs");
+            if (segments[2].Equals("Interfaces", StringComparison.OrdinalIgnoreCase))
+                return FindChild(root, "Interfaces") ?? FindChild(root, "POUs");
+
+            var pous = FindChild(root, "POUs");
             var categoryName = segments[2].ToLowerInvariant() switch
             {
                 "programs" => "Programs",
                 "functionblocks" => "Function Blocks",
                 "functions" => "Functions",
-                "interfaces" => "Interfaces",
                 _ => null
             };
             return categoryName is null ? pous : FindChild(pous, categoryName) ?? pous;
         }
 
+        if (segments.Length >= 3 && segments[1].Equals("Interfaces", StringComparison.OrdinalIgnoreCase))
+            return FindChild(root, "Interfaces") ?? FindChild(root, "POUs");
+
         if (segments.Length >= 3 && segments[1].Equals("DataTypes", StringComparison.OrdinalIgnoreCase))
         {
-            var dataTypes = FindChild(application, "Data Types");
+            var dataTypes = FindChild(root, "Data Types");
             var categoryName = segments.Length >= 4
                 ? segments[2].ToLowerInvariant() switch
                 {
@@ -585,12 +891,16 @@ public sealed class DevicesViewModel : Tool
 
         if (segments.Length >= 3 &&
             segments[1].Equals("GlobalVariables", StringComparison.OrdinalIgnoreCase))
-            return FindChild(application, "Global Variable Lists");
+            return FindChild(root, "Global Variable Lists");
 
         if (segments.Length >= 3 && segments[1].Equals("Tests", StringComparison.OrdinalIgnoreCase))
-            return FindChild(application, "Tests");
+            return FindChild(root, "Tests");
 
-        return application;
+        if (segments.Length >= 3 &&
+            segments[1].Equals("Configurations", StringComparison.OrdinalIgnoreCase))
+            return FindChild(root, "Configurations");
+
+        return null;
     }
 
     private static ProjectNodeDefinition? FindChild(ProjectNodeDefinition? parent, string name) =>
@@ -612,7 +922,9 @@ public sealed class DevicesViewModel : Tool
         => Path.GetFileNameWithoutExtension(relativePath);
 
     private static string GetProjectTreeNodeDisplayName(ProjectNodeDefinition definition) =>
-        definition.FilePath is { } filePath && IsStructuredTextPath(filePath)
+        definition.Kind is null &&
+        definition.FilePath is { } filePath &&
+        IsStructuredTextPath(filePath)
             ? Path.GetFileNameWithoutExtension(filePath)
             : definition.Name;
 
@@ -625,64 +937,13 @@ public sealed class DevicesViewModel : Tool
             return "task";
         if (normalized.Contains("/DataTypes/", StringComparison.OrdinalIgnoreCase))
             return "settings";
+        if (normalized.Contains("/Configurations/", StringComparison.OrdinalIgnoreCase))
+            return "controller";
         return "program";
     }
 
     private static string NormalizeRelativePath(string path) =>
         path.Replace('\\', '/');
-
-    private static DeviceTreeNode CreateController(string name, bool isExpanded) =>
-        new(name, DeviceIcons.Controller,
-        [
-            new("Runtime", DeviceIcons.Settings,
-            [
-                new("Target: STruC++ C++17 Runtime", DeviceIcons.Program),
-                new("Cycle and Watchdog Settings", DeviceIcons.Settings)
-            ], false),
-            new("Task Configuration", DeviceIcons.Task,
-            [
-                new("MainTask · cyclic 10 ms", DeviceIcons.Task,
-                [
-                    new("Main : Main", DeviceIcons.Program,
-                        filePath: "ProjectFiles/POUs/Programs/Main.st")
-                ]),
-                new("BackgroundTask · cyclic 100 ms", DeviceIcons.Task,
-                [
-                    new("Diagnostics : Blink", DeviceIcons.Program,
-                        filePath: "ProjectFiles/POUs/Programs/Blink.st")
-                ], false)
-            ]),
-            new("Local I/O", DeviceIcons.Device,
-            [
-                new("Digital Input Module", DeviceIcons.Device,
-                [
-                    new("DI0 · StartButton · %IX0.0", DeviceIcons.Settings),
-                    new("DI1 · StopButton · %IX0.1", DeviceIcons.Settings)
-                ], false),
-                new("Digital Output Module", DeviceIcons.Device,
-                [
-                    new("DO0 · MotorEnable · %QX0.0", DeviceIcons.Settings),
-                    new("DO1 · RunLamp · %QX0.1", DeviceIcons.Settings)
-                ], false),
-                new("Analog I/O Module", DeviceIcons.Device, isExpanded: false)
-            ], false),
-            new("Network Interfaces", DeviceIcons.Network,
-            [
-                new("Ethernet · 192.168.0.10/24", DeviceIcons.Network)
-            ], false),
-            new("Fieldbuses", DeviceIcons.Network,
-            [
-                new("PROFIBUS-DP Master (CIF50-PB)", DeviceIcons.Network,
-                [
-                    new("DPSlave_1 (WAGO 750-333)", DeviceIcons.Device,
-                    [
-                        new("750-333 Bus Coupler", DeviceIcons.Device),
-                        new("750-610 Digital I/O", DeviceIcons.Device)
-                    ], false),
-                    new("DPSlave_2 (WAGO 750-333)", DeviceIcons.Device)
-                ], false)
-            ], false)
-        ], isExpanded);
 }
 
 public sealed class DeviceTreeNode(
@@ -693,7 +954,8 @@ public sealed class DeviceTreeNode(
     string? filePath = null,
     string? libraryFileName = null,
     StrucppLocation? location = null,
-    bool isTransient = false)
+    bool isTransient = false,
+    string? kind = null)
 {
     public string Name { get; } = name;
     public IImage Icon { get; } = icon;
@@ -703,6 +965,7 @@ public sealed class DeviceTreeNode(
     public string? LibraryFileName { get; } = libraryFileName;
     public StrucppLocation? Location { get; } = location;
     public bool IsTransient { get; } = isTransient;
+    public string? Kind { get; } = kind;
 
     public ProjectNodeDefinition ToDefinition() => new()
     {
@@ -711,6 +974,7 @@ public sealed class DeviceTreeNode(
         IsExpanded = IsExpanded,
         FilePath = FilePath,
         LibraryFileName = LibraryFileName,
+        Kind = Kind,
         Children = Children
             .Where(child => !child.IsTransient)
             .Select(child => child.ToDefinition())
@@ -724,13 +988,13 @@ public sealed class DeviceTreeNode(
             definition.Children.Select(FromDefinition).ToList(),
             definition.IsExpanded,
             definition.FilePath,
-            definition.LibraryFileName);
+            definition.LibraryFileName,
+            kind: definition.Kind);
 }
 
 internal static class DeviceIcons
 {
     public static IImage Application { get; } = Se98Icons.Apps.Size16.Codeblocks;
-    public static IImage Build { get; } = Se98Icons.Actions.Size16.SystemRun;
     public static IImage Controller { get; } = Se98Icons.Devices.Size16.Computer;
     public static IImage Device { get; } = Se98Icons.Devices.Size16.DriveHarddisk;
     public static IImage Display { get; } = Se98Icons.Devices.Size16.VideoDisplay;
@@ -740,7 +1004,6 @@ internal static class DeviceIcons
     public static IImage Network { get; } = Se98Icons.Devices.Size16.NetworkWired;
     public static IImage Program { get; } = Se98Icons.Mimes.Size16.TextXScript;
     public static IImage Settings { get; } = Se98Icons.Apps.Size16.PreferencesSystem;
-    public static IImage Software { get; } = Se98Icons.Apps.Size16.SystemSoftwareInstaller;
     public static IImage Pous { get; } = Se98Icons.Places.Size16.FolderDocuments;
     public static IImage DataTypes { get; } = Se98Icons.Mimes.Size16.TextXGeneric;
     public static IImage Task { get; } = Se98Icons.Actions.Size16.Appointment;
@@ -748,7 +1011,6 @@ internal static class DeviceIcons
     public static IImage Get(string name) => name switch
     {
         "application" => Application,
-        "build" => Build,
         "controller" => Controller,
         "device" => Device,
         "display" => Display,
@@ -757,7 +1019,6 @@ internal static class DeviceIcons
         "network" => Network,
         "program" => Program,
         "settings" => Settings,
-        "software" => Software,
         "pous" => Pous,
         "data-types" => DataTypes,
         "task" => Task,
@@ -767,7 +1028,6 @@ internal static class DeviceIcons
     public static string GetName(IImage icon)
     {
         if (ReferenceEquals(icon, Application)) return "application";
-        if (ReferenceEquals(icon, Build)) return "build";
         if (ReferenceEquals(icon, Controller)) return "controller";
         if (ReferenceEquals(icon, Device)) return "device";
         if (ReferenceEquals(icon, Display)) return "display";
@@ -776,7 +1036,6 @@ internal static class DeviceIcons
         if (ReferenceEquals(icon, Network)) return "network";
         if (ReferenceEquals(icon, Program)) return "program";
         if (ReferenceEquals(icon, Settings)) return "settings";
-        if (ReferenceEquals(icon, Software)) return "software";
         if (ReferenceEquals(icon, Pous)) return "pous";
         if (ReferenceEquals(icon, DataTypes)) return "data-types";
         if (ReferenceEquals(icon, Task)) return "task";

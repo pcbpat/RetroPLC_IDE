@@ -1,4 +1,4 @@
-FUNCTION_BLOCK MotorController IMPLEMENTS IRunnable
+FUNCTION_BLOCK MotorController IMPLEMENTS IMotor
 VAR_INPUT
     StartRequest : BOOL;
     StopRequest : BOOL;

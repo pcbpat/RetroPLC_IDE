@@ -22,8 +22,18 @@
               HorizontalAlignment="Stretch"
               VerticalAlignment="Stretch">
         <TreeView.ContextMenu>
-            <ContextMenu>
-                <MenuItem Header="Add _POU..." Click="AddPou_OnClick" />
+            <ContextMenu Opening="ContextMenu_OnOpening">
+                <MenuItem Header="Add _POU..."
+                          Click="AddPou_OnClick" />
+                <MenuItem x:Name="AddConfigurationMenuItem"
+                          Header="Add _Configuration..."
+                          Click="AddConfiguration_OnClick" />
+                <MenuItem x:Name="AddResourceMenuItem"
+                          Header="Add _Resource..."
+                          Click="AddResource_OnClick" />
+                <MenuItem x:Name="AddTaskMenuItem"
+                          Header="Add _Task..."
+                          Click="AddTask_OnClick" />
                 <Separator />
                 <MenuItem Header="Import _CODESYS Library..."
                           Click="ImportCodesysLibrary_OnClick" />

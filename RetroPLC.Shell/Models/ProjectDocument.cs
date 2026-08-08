@@ -25,7 +25,28 @@ public sealed class ProjectNodeDefinition
     public bool IsExpanded { get; set; } = true;
     public string? FilePath { get; set; }
     public string? LibraryFileName { get; set; }
+    public string? Kind { get; set; }
     public List<ProjectNodeDefinition> Children { get; set; } = [];
+}
+
+/// <summary>
+/// Identifies the IEC 61131-3 element a project-tree node represents.
+/// </summary>
+public static class ProjectNodeKinds
+{
+    public const string Configuration = "configuration";
+    public const string Resource = "resource";
+    public const string Task = "task";
+
+    /// <summary>
+    /// Returns the bare IEC identifier from a display name such as
+    /// "Res0 (RESOURCE on PLC)".
+    /// </summary>
+    public static string GetElementName(string displayName)
+    {
+        var separator = displayName.IndexOf(" (", StringComparison.Ordinal);
+        return separator < 0 ? displayName : displayName[..separator];
+    }
 }
 
 public sealed record OpenedProject(ProjectDocument Document, string DirectoryPath, string ManifestPath);

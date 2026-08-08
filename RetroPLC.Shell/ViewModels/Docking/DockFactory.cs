@@ -66,7 +66,10 @@ public sealed class DockFactory : Factory
                 AddPou,
                 OpenLibrary,
                 ImportCodesysLibrary,
-                NavigateToLocation)
+                NavigateToLocation,
+                AddConfiguration,
+                AddResource,
+                AddTask)
             { Id = "Project", Title = "Project", CanPin = true };
         _projectTool = tool1;
         if (_currentProject is not null && _projectDirectory is not null)
@@ -277,7 +280,13 @@ public sealed class DockFactory : Factory
         _currentProject = document;
         _projectDirectory = projectDirectory;
         _projectSymbols.Clear();
+        DevicesViewModel.MigrateProjectTree(document);
         _projectTool?.LoadProject(document, projectDirectory);
+        // Persist the one-time tree migration (Software / Hardware wrappers
+        // flattened away) so the manifest matches the new project-tree shape.
+        ProjectStore.Save(
+            document,
+            Path.Combine(projectDirectory, ProjectStore.ManifestFileName));
         _messagesTool?.SetProject(document.Name, projectDirectory);
         ConfigureProjectWatcher(projectDirectory);
         CloseAllDocuments();
@@ -423,6 +432,266 @@ public sealed class DockFactory : Factory
         OpenDocument(relativePath);
     }
 
+    public void AddConfiguration(string name)
+    {
+        if (_currentProject is null || _projectDirectory is null)
+            throw new InvalidOperationException("Open a project before adding a Configuration.");
+
+        if (!IecIdentifier.IsValid(name))
+            throw new InvalidDataException("The configuration name is not a valid IEC identifier.");
+
+        var configurations = FindOrCreateConfigurationsFolder(_currentProject);
+        var relativePath = $"ProjectFiles/Configurations/{name}.st";
+        if (configurations.Children.Any(child =>
+                string.Equals(child.FilePath, relativePath, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new IOException($"A configuration named '{name}' already exists.");
+        }
+
+        var filePath = Path.Combine(
+            _projectDirectory,
+            relativePath.Replace('/', Path.DirectorySeparatorChar));
+        if (File.Exists(filePath))
+            throw new IOException($"The source file '{relativePath}' already exists.");
+
+        Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+        using (var stream = new FileStream(filePath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+        using (var writer = new StreamWriter(stream, new UTF8Encoding(false)))
+        {
+            writer.Write($"CONFIGURATION {name}\nEND_CONFIGURATION\n");
+        }
+
+        var node = new ProjectNodeDefinition
+        {
+            Name = name,
+            Icon = "controller",
+            Kind = ProjectNodeKinds.Configuration,
+            FilePath = relativePath,
+            IsExpanded = true
+        };
+        configurations.Children.Add(node);
+        configurations.IsExpanded = true;
+
+        try
+        {
+            ProjectStore.Save(
+                _currentProject,
+                Path.Combine(_projectDirectory, ProjectStore.ManifestFileName));
+        }
+        catch
+        {
+            configurations.Children.Remove(node);
+            File.Delete(filePath);
+            throw;
+        }
+
+        _projectTool?.LoadProject(_currentProject, _projectDirectory);
+        OpenDocument(relativePath);
+    }
+
+    public void AddResource(NewResourceDefinition definition, string configurationFilePath)
+    {
+        if (_currentProject is null || _projectDirectory is null)
+            throw new InvalidOperationException("Open a project before adding a Resource.");
+
+        ValidateElementName(definition.Name, "resource");
+        ValidateElementName(definition.Processor, "processor");
+
+        var filePath = ToAbsolutePath(configurationFilePath);
+        if (!File.Exists(filePath))
+            throw new IOException($"The source file '{configurationFilePath}' does not exist.");
+
+        var source = File.ReadAllText(filePath);
+        if (ContainsResource(source, definition.Name))
+            throw new IOException($"A resource named '{definition.Name}' already exists.");
+
+        var updated = InsertResource(source, definition);
+        try
+        {
+            WriteSource(filePath, updated);
+            SaveProject();
+        }
+        catch
+        {
+            WriteSource(filePath, source);
+            throw;
+        }
+        ReloadProjectTreeAndRefreshOpenDocument(configurationFilePath, updated);
+    }
+
+    public void AddTask(NewTaskDefinition definition, string configurationFilePath, string resourceName)
+    {
+        if (_currentProject is null || _projectDirectory is null)
+            throw new InvalidOperationException("Open a project before adding a Task.");
+
+        ValidateElementName(definition.Name, "task");
+        if (definition.Priority < 0)
+            throw new InvalidDataException("The task priority cannot be negative.");
+        if (definition.Trigger.Equals("Cyclic", StringComparison.OrdinalIgnoreCase) &&
+            string.IsNullOrWhiteSpace(definition.Interval))
+            throw new InvalidDataException("A cyclic task requires an interval.");
+        if (definition.Trigger.Equals("Interrupt", StringComparison.OrdinalIgnoreCase) &&
+            string.IsNullOrWhiteSpace(definition.EventExpression))
+            throw new InvalidDataException("An interrupt task requires a SINGLE expression.");
+
+        var filePath = ToAbsolutePath(configurationFilePath);
+        if (!File.Exists(filePath))
+            throw new IOException($"The source file '{configurationFilePath}' does not exist.");
+
+        var source = File.ReadAllText(filePath);
+        if (ContainsTask(source, definition.Name))
+            throw new IOException($"A task named '{definition.Name}' already exists.");
+
+        var updated = InsertTask(source, resourceName, definition);
+        try
+        {
+            WriteSource(filePath, updated);
+            SaveProject();
+        }
+        catch
+        {
+            WriteSource(filePath, source);
+            throw;
+        }
+        ReloadProjectTreeAndRefreshOpenDocument(configurationFilePath, updated);
+    }
+
+    private static ProjectNodeDefinition FindOrCreateConfigurationsFolder(ProjectDocument project)
+    {
+        var root = project.Tree.FirstOrDefault()
+                   ?? throw new InvalidDataException("The project tree is empty.");
+        var configurations = root.Children.FirstOrDefault(child =>
+                                 string.Equals(child.Name, "Configurations", StringComparison.Ordinal))
+                             ?? new ProjectNodeDefinition
+                             {
+                                 Name = "Configurations",
+                                 Icon = "controller",
+                                 IsExpanded = true
+                             };
+        if (!root.Children.Contains(configurations))
+            root.Children.Add(configurations);
+        return configurations;
+    }
+
+    private string ToAbsolutePath(string relativePath) => Path.Combine(
+        _projectDirectory!,
+        relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+    private static string InsertResource(string source, NewResourceDefinition definition)
+    {
+        var lines = SplitLines(source);
+        var endMarker = FindLine(lines, line =>
+            line.Trim().StartsWith("END_CONFIGURATION", StringComparison.OrdinalIgnoreCase));
+        if (endMarker < 0)
+            throw new InvalidDataException(
+                "The configuration file does not contain END_CONFIGURATION.");
+
+        lines.InsertRange(
+            endMarker,
+            [
+                $"  RESOURCE {definition.Name} ON {definition.Processor}",
+                "  END_RESOURCE"
+            ]);
+        return string.Join("\n", lines);
+    }
+
+    private static string InsertTask(string source, string resourceName, NewTaskDefinition definition)
+    {
+        var lines = SplitLines(source);
+        var resourceIndex = FindLine(lines, line => IsElement(line, "RESOURCE", resourceName));
+        if (resourceIndex < 0)
+            throw new InvalidDataException(
+                $"The RESOURCE '{resourceName}' was not found in the configuration file.");
+
+        var task = definition.Trigger.Equals("Cyclic", StringComparison.OrdinalIgnoreCase)
+            ? $"    TASK {definition.Name}(INTERVAL := {definition.Interval}, PRIORITY := {definition.Priority});"
+            : $"    TASK {definition.Name}(SINGLE := {definition.EventExpression}, PRIORITY := {definition.Priority});";
+        lines.Insert(resourceIndex + 1, task);
+        return string.Join("\n", lines);
+    }
+
+    private static bool ContainsResource(string source, string resourceName) =>
+        SplitLines(source).Any(line => IsElement(line, "RESOURCE", resourceName));
+
+    private static bool ContainsTask(string source, string taskName) =>
+        SplitLines(source).Any(line => IsElement(line, "TASK", taskName));
+
+    private static bool IsElement(string line, string keyword, string name)
+    {
+        var trimmed = line.Trim();
+        var keywordLength = keyword.Length;
+        if (!trimmed.StartsWith(keyword + " ", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var nameStart = trimmed.IndexOf(' ', keywordLength);
+        if (nameStart < 0)
+            return false;
+        nameStart++;
+        if (!trimmed.AsSpan(nameStart).StartsWith(name, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var nameEnd = nameStart + name.Length;
+        return nameEnd >= trimmed.Length || !char.IsLetterOrDigit(trimmed[nameEnd]);
+    }
+
+    private static List<string> SplitLines(string source) =>
+        source.Replace("\r\n", "\n").Split('\n').ToList();
+
+    private static int FindLine(List<string> lines, Func<string, bool> predicate)
+    {
+        for (var index = 0; index < lines.Count; index++)
+        {
+            if (predicate(lines[index]))
+                return index;
+        }
+
+        return -1;
+    }
+
+    private static void WriteSource(string filePath, string text)
+    {
+        using var stream = new FileStream(
+            filePath,
+            FileMode.Create,
+            FileAccess.Write,
+            FileShare.None);
+        using var writer = new StreamWriter(stream, new UTF8Encoding(false));
+        writer.Write(text);
+    }
+
+    private static void ValidateElementName(string name, string element)
+    {
+        if (!IecIdentifier.IsValid(name))
+            throw new InvalidDataException(
+                $"The {element} name is not a valid IEC identifier.");
+    }
+
+    private void SaveProject()
+    {
+        if (_currentProject is null || _projectDirectory is null)
+            return;
+
+        ProjectStore.Save(
+            _currentProject,
+            Path.Combine(_projectDirectory, ProjectStore.ManifestFileName));
+    }
+
+    private void ReloadProjectTreeAndRefreshOpenDocument(string relativePath, string text)
+    {
+        _projectTool?.LoadProject(_currentProject!, _projectDirectory!);
+
+        var fullPath = Path.GetFullPath(Path.Combine(_projectDirectory!, relativePath));
+        var openDocument = Find(dockable => dockable is DocumentViewModel)
+            .OfType<DocumentViewModel>()
+            .FirstOrDefault(document =>
+                string.Equals(document.FilePath, fullPath, StringComparison.OrdinalIgnoreCase));
+        if (openDocument is not null && !openDocument.IsDirty)
+        {
+            openDocument.Document.Text = text;
+            openDocument.Save();
+        }
+    }
+
     public void OpenTerminal()
     {
         if (_terminalDock is null)
@@ -503,9 +772,7 @@ public sealed class DockFactory : Factory
 
         var projectRoot = project.Tree.FirstOrDefault()
                           ?? throw new InvalidDataException("The project tree is empty.");
-        var software = FindChild(projectRoot, "Software");
-        var application = FindChild(software, "Application");
-        var pous = FindChild(application, "POUs");
+        var pous = FindChild(projectRoot, "POUs");
         return FindChild(pous, categoryName);
     }
 
