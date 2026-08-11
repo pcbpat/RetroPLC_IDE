@@ -1,38 +1,15 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:RetroPLC.Shell.ViewModels.Docking"
-             xmlns:mainVm="using:RetroPLC.Shell.ViewModels"
              x:Class="RetroPLC.Shell.Views.Docking.AppearanceView"
              x:DataType="vm:AppearanceViewModel">
     <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                   VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="8" Spacing="8">
             <GroupBox Header="Color scheme">
-                <Grid Margin="6"
-                      RowDefinitions="Auto,Auto"
-                      ColumnDefinitions="Auto,*"
-                      RowSpacing="6"
-                      ColumnSpacing="8">
-                    <TextBlock VerticalAlignment="Center"
-                               Text="Scheme:" />
-                    <ComboBox Grid.Column="1"
-                              MinWidth="160"
-                              HorizontalAlignment="Stretch"
-                              ItemsSource="{Binding Settings.Themes}"
-                              SelectedItem="{Binding Settings.SelectedTheme}">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate DataType="mainVm:ThemeOption"
-                                          x:DataType="mainVm:ThemeOption">
-                                <TextBlock Text="{Binding Name}" />
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
-
-                    <CheckBox Grid.Row="1"
-                              Grid.ColumnSpan="2"
-                              Content="Dark mode"
-                              IsChecked="{Binding Settings.IsDarkMode}" />
-                </Grid>
+                <CheckBox Margin="6"
+                          Content="Dark mode"
+                          IsChecked="{Binding Settings.IsDarkMode}" />
             </GroupBox>
 
             <GroupBox Header="Font">

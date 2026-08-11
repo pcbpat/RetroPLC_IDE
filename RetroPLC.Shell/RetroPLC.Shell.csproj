@@ -25,6 +25,7 @@
     <ItemGroup>
         <ProjectReference Include="..\RetroPLC.Icons\RetroPLC.Icons.csproj" />
         <ProjectReference Include="..\RetroPLC.LanguageServerHost\RetroPLC.LanguageServerHost.csproj" />
+        <ProjectReference Include="..\RetroPLC.Theme\RetroPLC.Theme.csproj" />
         <PackageReference Include="Avalonia" Version="12.0.3"/>
         <PackageReference Include="Avalonia.Desktop" Version="12.0.3"/>
         <PackageReference Include="Avalonia.Fonts.Inter" Version="12.0.3"/>
@@ -35,7 +36,6 @@
         <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.1"/>
         <PackageReference Include="Avalonia.AvaloniaEdit" Version="12.0.0"/>
         <PackageReference Include="AvaloniaEdit.TextMate" Version="12.0.0"/>
-        <PackageReference Include="Classic.Avalonia.Theme.Dock" Version="12.0.1-beta1"/>
         <PackageReference Include="Dock.Avalonia" Version="12.0.0.2"/>
         <PackageReference Include="Dock.Model.Mvvm" Version="12.0.0.2"/>
         <PackageReference Include="Iciclecreek.Avalonia.Terminal" Version="2.0.3"/>

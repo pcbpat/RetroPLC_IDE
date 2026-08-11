@@ -16,6 +16,7 @@ using Classic.CommonControls.Dialogs;
 using RetroPLC.LanguageServerHost;
 using RetroPLC.Shell.ViewModels;
 using RetroPLC.Shell.ViewModels.Docking;
+using RetroPLC.Theme;
 using TextMateSharp.Grammars;
 
 namespace RetroPLC.Shell.Views.Docking;
@@ -46,21 +47,35 @@ public partial class DocumentView : UserControl
         _textMateInstallation = Editor.InstallTextMate(_registryOptions);
 
         DataContextChanged += DocumentViewOnDataContextChanged;
-        AttachedToVisualTree += (_, _) =>
-            Dispatcher.UIThread.Post(ApplyDocumentGrammar, DispatcherPriority.Loaded);
-        ResourcesChanged += (_, _) => ApplySyntaxHighlighting();
+        AttachedToVisualTree += DocumentViewOnAttachedToVisualTree;
         Editor.TextArea.TextEntered += EditorOnTextEntered;
         Editor.TextArea.KeyDown += EditorOnKeyDown;
         Editor.TextArea.PointerPressed += EditorOnPointerPressed;
-        DetachedFromVisualTree += (_, _) =>
-        {
-            CancelCompletion();
-            CancelRename();
-            CancelNavigationRequest();
-            CancelFormat();
-        };
+        DetachedFromVisualTree += DocumentViewOnDetachedFromVisualTree;
         ApplySyntaxHighlighting();
     }
+
+    private void DocumentViewOnAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        if (Application.Current is { } application)
+            application.ActualThemeVariantChanged += ApplicationOnActualThemeVariantChanged;
+
+        Dispatcher.UIThread.Post(ApplyDocumentGrammar, DispatcherPriority.Loaded);
+    }
+
+    private void DocumentViewOnDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        if (Application.Current is { } application)
+            application.ActualThemeVariantChanged -= ApplicationOnActualThemeVariantChanged;
+
+        CancelCompletion();
+        CancelRename();
+        CancelNavigationRequest();
+        CancelFormat();
+    }
+
+    private void ApplicationOnActualThemeVariantChanged(object? sender, EventArgs e) =>
+        ApplySyntaxHighlighting();
 
     private void DocumentViewOnDataContextChanged(object? sender, EventArgs e)
     {
@@ -155,9 +170,7 @@ public partial class DocumentView : UserControl
     }
 
     private static bool IsDarkMode() =>
-        Application.Current?.Resources.TryGetValue(
-            AppResourceKeys.DarkMode,
-            out var value) == true && value is true;
+        Application.Current?.ActualThemeVariant == ThemeVariants.Dark;
 
     private void Save_OnClick(object? sender, RoutedEventArgs e)
     {
