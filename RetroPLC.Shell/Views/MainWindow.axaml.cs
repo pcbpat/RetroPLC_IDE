@@ -41,6 +41,25 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void AddDataType_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel viewModel || !viewModel.IsProjectOpen)
+            return;
+
+        var dialog = new AddDataTypeWindow();
+        if (!await dialog.ShowDialog<bool>(this) || dialog.Result is not { } definition)
+            return;
+
+        try
+        {
+            viewModel.AddDataType(definition);
+        }
+        catch (Exception exception)
+        {
+            await ShowProjectError("Unable to add data type", exception);
+        }
+    }
+
     private async System.Threading.Tasks.Task ShowNewProjectAsync()
     {
         var dialog = new NewProjectWindow();
@@ -52,8 +71,11 @@ public partial class MainWindow : Window
             if (DataContext is not MainWindowViewModel viewModel)
                 throw new InvalidOperationException("The project workspace is not available.");
 
-            var tree = viewModel.CreateDefaultProjectTree(result.Name);
-            OpenProject(ProjectStore.Create(result.Location, result.Name, result.Template, tree));
+            var project = await viewModel.CreateProjectAsync(
+                result.Location,
+                result.Name,
+                result.Template);
+            Title = $"{project.Document.Name} - RetroPLC IDE";
         }
         catch (Exception exception)
         {
@@ -132,7 +154,7 @@ public partial class MainWindow : Window
 
         try
         {
-            OpenProject(ProjectStore.Open(projectDirectory));
+            await LoadProjectAsync(ProjectStore.Open(projectDirectory));
         }
         catch (Exception exception)
         {
@@ -172,11 +194,12 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OpenProject(OpenedProject project)
+    private async System.Threading.Tasks.Task LoadProjectAsync(OpenedProject project)
     {
-        if (DataContext is MainWindowViewModel viewModel)
-            viewModel.OpenProject(project);
+        if (DataContext is not MainWindowViewModel viewModel)
+            return;
 
+        await viewModel.OpenProjectAsync(project);
         Title = $"{project.Document.Name} - RetroPLC IDE";
     }
 

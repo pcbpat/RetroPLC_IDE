@@ -120,6 +120,9 @@
                     <MenuItem Header="Add _POU..."
                               IsEnabled="{Binding IsProjectOpen}"
                               Click="AddPou_OnClick" />
+                    <MenuItem Header="Add _Data Type..."
+                              IsEnabled="{Binding IsProjectOpen}"
+                              Click="AddDataType_OnClick" />
                     <MenuItem Header="Add New Item..." IsEnabled="False" />
                     <MenuItem Header="Add Existing Item..." IsEnabled="False" />
                     <MenuItem Header="Add New Object..." IsEnabled="False" />
@@ -138,7 +141,9 @@
                 </MenuItem>
 
                 <MenuItem Header="_Build">
+                    <MenuItem Header="Verify PLC Project" Command="{Binding VerifyCommand}" />
                     <MenuItem Header="Build PLC Project" InputGesture="F7" Command="{Binding BuildCommand}" />
+                    <MenuItem Header="Download PLC Project" Command="{Binding DownloadCommand}" />
                     <MenuItem Header="Rebuild PLC Project" IsEnabled="False" />
                     <MenuItem Header="Clean PLC Project" IsEnabled="False" />
                     <Separator />
@@ -273,6 +278,10 @@
                                               SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.ViewRefresh}"
                                               Command="{Binding ResetPlcCommand}" />
                 <Separator />
+                <commonControls:ToolBarButton Text="Verify"
+                                              LargeIcon="{x:Static icons:Se98Icons+Actions+Size24.GtkSpellCheck}"
+                                              SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.GtkSpellCheck}"
+                                              Command="{Binding VerifyCommand}" />
                 <commonControls:ToolBarButton Text="Build"
                                               LargeIcon="{x:Static icons:Se98Icons+Actions+Size24.SystemRun}"
                                               SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.SystemRun}"
@@ -329,16 +338,25 @@
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
                                     Spacing="12">
-                            <Button Width="170"
-                                    Height="36"
-                                    HorizontalContentAlignment="Center"
-                                    Content="New Project"
-                                    Click="NewProject_OnClick" />
-                            <Button Width="170"
-                                    Height="36"
-                                    HorizontalContentAlignment="Center"
-                                    Content="Open Project..."
-                                    Click="OpenProject_OnClick" />
+                            <!-- While a workspace loads, the buttons are replaced
+                                 by a loading label. -->
+                            <StackPanel IsVisible="{Binding !IsLoadingProject}"
+                                        Spacing="12">
+                                <Button Width="170"
+                                        Height="36"
+                                        HorizontalContentAlignment="Center"
+                                        Content="New Project"
+                                        Click="NewProject_OnClick" />
+                                <Button Width="170"
+                                        Height="36"
+                                        HorizontalContentAlignment="Center"
+                                        Content="Open Project..."
+                                        Click="OpenProject_OnClick" />
+                            </StackPanel>
+                            <TextBlock IsVisible="{Binding IsLoadingProject}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       Text="Loading project..." />
                         </StackPanel>
                     </Grid>
                 </ClassicBorderDecorator>

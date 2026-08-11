@@ -90,6 +90,33 @@ public partial class DevicesView : UserControl
         }
     }
 
+    private async void AddDataType_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not DevicesViewModel viewModel ||
+            this.FindAncestorOfType<Window>() is not { } owner)
+        {
+            return;
+        }
+
+        var dialog = new AddDataTypeWindow();
+        if (!await dialog.ShowDialog<bool>(owner) || dialog.Result is not { } definition)
+            return;
+
+        try
+        {
+            viewModel.AddDataType(definition);
+        }
+        catch (Exception exception)
+        {
+            await MessageBox.ShowDialog(
+                owner,
+                exception.Message,
+                "Unable to add data type",
+                MessageBoxButtons.Ok,
+                MessageBoxIcon.Error);
+        }
+    }
+
     private async void AddConfiguration_OnClick(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not DevicesViewModel viewModel ||

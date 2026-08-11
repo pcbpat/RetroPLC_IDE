@@ -5,6 +5,7 @@ using System.Windows.Input;
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using Classic.Avalonia.Theme;
 using CommunityToolkit.Mvvm.Input;
 using Dock.Model.Controls;
@@ -26,6 +27,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private bool _isLoggedIn;
     private bool _isRunning;
     private bool _isProjectOpen;
+    private bool _isLoadingProject;
     private string _plcStatus = "Offline";
 
     public IReadOnlyList<ThemeOption> Themes { get; } =
@@ -70,6 +72,7 @@ public partial class MainWindowViewModel : ViewModelBase
     public IRelayCommand RunCommand { get; }
     public IRelayCommand StopCommand { get; }
     public IRelayCommand ResetPlcCommand { get; }
+    public IRelayCommand VerifyCommand { get; }
     public IRelayCommand BuildCommand { get; }
     public IRelayCommand DownloadCommand { get; }
 
@@ -83,6 +86,12 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         get => _isProjectOpen;
         private set => SetProperty(ref _isProjectOpen, value);
+    }
+
+    public bool IsLoadingProject
+    {
+        get => _isLoadingProject;
+        private set => SetProperty(ref _isLoadingProject, value);
     }
 
     public ThemeOption SelectedTheme
@@ -122,16 +131,54 @@ public partial class MainWindowViewModel : ViewModelBase
         }
     }
 
-    public void OpenProject(OpenedProject project) =>
-        OpenProjectCore(project);
+    public async Task OpenProjectAsync(OpenedProject project)
+    {
+        IsLoadingProject = true;
+        try
+        {
+            // Let the Welcome panel paint the progress bar before the blocking
+            // workspace load (tree migration, dock layout, language server).
+            await Dispatcher.Yield(DispatcherPriority.Background);
+            OpenProjectCore(project);
+        }
+        finally
+        {
+            IsLoadingProject = false;
+        }
+    }
+
+    public async Task<OpenedProject> CreateProjectAsync(
+        string location,
+        string name,
+        string template)
+    {
+        IsLoadingProject = true;
+        try
+        {
+            // Let the Welcome panel paint the progress bar before the blocking
+            // workspace creation (template copy, tree, dock layout).
+            await Dispatcher.Yield(DispatcherPriority.Background);
+            var tree = CreateDefaultProjectTree(name);
+            var project = ProjectStore.Create(location, name, template, tree);
+            OpenProjectCore(project);
+            return project;
+        }
+        finally
+        {
+            IsLoadingProject = false;
+        }
+    }
 
     public void AddPou(NewPouDefinition definition) =>
         _factory.AddPou(definition);
 
+    public void AddDataType(NewDataTypeDefinition definition) =>
+        _factory.AddDataType(definition);
+
     public void ImportCodesysLibrary(CodesysLibraryImport import) =>
         _factory.ImportCodesysLibrary(import);
 
-    public IReadOnlyList<ProjectNodeDefinition> CreateDefaultProjectTree(string projectName) =>
+    private static IReadOnlyList<ProjectNodeDefinition> CreateDefaultProjectTree(string projectName) =>
         DevicesViewModel.CreateDefaultNodes(projectName)
             .Select(node => node.ToDefinition())
             .ToList();
@@ -167,9 +214,10 @@ public partial class MainWindowViewModel : ViewModelBase
         RunCommand = new RelayCommand(Run, () => _isLoggedIn && !_isRunning);
         StopCommand = new RelayCommand(Stop, () => _isLoggedIn && _isRunning);
         ResetPlcCommand = new RelayCommand(ResetPlc, () => _isLoggedIn);
+        VerifyCommand = new RelayCommand(Verify, () => _isProjectOpen);
         BuildCommand = new RelayCommand(Build, () => _isProjectOpen);
-        _factory.BuildExited += OnBuildExited;
-        DownloadCommand = new RelayCommand(Download, () => _isLoggedIn && !_isRunning);
+        DownloadCommand = new RelayCommand(Download, () => _isProjectOpen && !_isRunning);
+        _factory.BuildOperationExited += OnBuildOperationExited;
         ApplyTheme();
         ApplyTextSize();
     }
@@ -179,7 +227,9 @@ public partial class MainWindowViewModel : ViewModelBase
         _factory.OpenProject(project.Document, project.DirectoryPath);
         CreateLayout();
         IsProjectOpen = true;
+        VerifyCommand.NotifyCanExecuteChanged();
         BuildCommand.NotifyCanExecuteChanged();
+        DownloadCommand.NotifyCanExecuteChanged();
         RenameSymbolCommand.NotifyCanExecuteChanged();
         GoToDefinitionCommand.NotifyCanExecuteChanged();
         FindReferencesCommand.NotifyCanExecuteChanged();
@@ -388,29 +438,46 @@ public partial class MainWindowViewModel : ViewModelBase
         RefreshPlcCommands();
     }
 
+    private void Verify()
+    {
+        StartBuildOperation(BuildOperation.Verify, "verifying…", _factory.Verify);
+    }
+
     private void Build()
     {
-        PlcStatus = _isOnline ? "Online · building…" : "Offline · building…";
+        StartBuildOperation(BuildOperation.Build, "building…", _factory.Build);
+    }
+
+    private void StartBuildOperation(BuildOperation operation, string status, System.Action action)
+    {
+        PlcStatus = _isOnline ? $"Online · {status}" : $"Offline · {status}";
         try
         {
             _factory.SaveAllDocuments();
-            _factory.Build();
+            action();
         }
         catch
         {
-            OnBuildExited(-1);
+            OnBuildOperationExited(operation, -1);
         }
     }
 
-    private void OnBuildExited(int exitCode)
+    private void OnBuildOperationExited(BuildOperation operation, int exitCode)
     {
-        var result = exitCode == 0 ? "build succeeded" : $"build failed ({exitCode})";
+        var action = operation switch
+        {
+            BuildOperation.Verify => "verification",
+            BuildOperation.Build => "build",
+            BuildOperation.Download => "download",
+            _ => "operation"
+        };
+        var result = exitCode == 0 ? $"{action} succeeded" : $"{action} failed ({exitCode})";
         PlcStatus = _isOnline ? $"Online · {result}" : $"Offline · {result}";
     }
 
     private void Download()
     {
-        PlcStatus = "Online · download complete · STOP";
+        StartBuildOperation(BuildOperation.Download, "downloading…", _factory.Download);
     }
 
     private void RefreshPlcCommands()

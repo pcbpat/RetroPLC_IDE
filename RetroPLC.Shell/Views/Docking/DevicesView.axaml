@@ -25,6 +25,8 @@
             <ContextMenu Opening="ContextMenu_OnOpening">
                 <MenuItem Header="Add _POU..."
                           Click="AddPou_OnClick" />
+                <MenuItem Header="Add _Data Type..."
+                          Click="AddDataType_OnClick" />
                 <MenuItem x:Name="AddConfigurationMenuItem"
                           Header="Add _Configuration..."
                           Click="AddConfiguration_OnClick" />

@@ -17,6 +17,7 @@ public sealed class DevicesViewModel : Tool
     private readonly Action<string>? _openDocument;
     private readonly Action<StrucppLocation>? _navigateToLocation;
     private readonly Action<NewPouDefinition>? _addPou;
+    private readonly Action<NewDataTypeDefinition>? _addDataType;
     private readonly Action<string>? _openLibrary;
     private readonly Action<CodesysLibraryImport>? _importCodesysLibrary;
     private readonly Action<string>? _addConfiguration;
@@ -26,10 +27,12 @@ public sealed class DevicesViewModel : Tool
         new(StringComparer.OrdinalIgnoreCase);
     private ProjectDocument? _currentProject;
     private string? _projectDirectory;
+    private DeviceTreeNode? _buildOutputNode;
 
     public DevicesViewModel(
         Action<string>? openDocument = null,
         Action<NewPouDefinition>? addPou = null,
+        Action<NewDataTypeDefinition>? addDataType = null,
         Action<string>? openLibrary = null,
         Action<CodesysLibraryImport>? importCodesysLibrary = null,
         Action<StrucppLocation>? navigateToLocation = null,
@@ -40,6 +43,7 @@ public sealed class DevicesViewModel : Tool
         _openDocument = openDocument;
         _navigateToLocation = navigateToLocation;
         _addPou = addPou;
+        _addDataType = addDataType;
         _openLibrary = openLibrary;
         _importCodesysLibrary = importCodesysLibrary;
         _addConfiguration = addConfiguration;
@@ -82,7 +86,6 @@ public sealed class DevicesViewModel : Tool
                 new("IController", DeviceIcons.Program,
                     filePath: "ProjectFiles/Interfaces/IController.st")
             ], false),
-            new("Global Variable Lists", DeviceIcons.Globe, [], false),
             new("Configurations", DeviceIcons.Controller, [], true),
             new("Libraries", DeviceIcons.Library,
                 CreateLibraryNodes(), false),
@@ -100,6 +103,7 @@ public sealed class DevicesViewModel : Tool
             _documentSymbols.Clear();
         _currentProject = document;
         _projectDirectory = projectDirectory;
+        _buildOutputNode = CreateBuildOutputNode(projectDirectory);
         MigrateProjectTree(document);
         SynchronizeProjectFiles(document, projectDirectory);
         SynchronizeLibraries(document, projectDirectory);
@@ -114,7 +118,6 @@ public sealed class DevicesViewModel : Tool
         "Data Types",
         "POUs",
         "Interfaces",
-        "Global Variable Lists",
         "Configurations",
         "Libraries",
         "Tests"
@@ -155,7 +158,7 @@ public sealed class DevicesViewModel : Tool
             {
                 moved.AddRange(TakeNamed(
                     application.Children,
-                    ["POUs", "Data Types", "Global Variable Lists", "Tests"]));
+                    ["POUs", "Data Types", "Tests"]));
                 moved.AddRange(application.Children);
             }
 
@@ -244,12 +247,16 @@ public sealed class DevicesViewModel : Tool
     }
 
     /// <summary>
-    /// The Build and Deployment / Project Documentation sections are no
-    /// longer part of the project-tree design.
+    /// Sections that are no longer part of the project-tree design. Standalone
+    /// GVLs are a vendor extension; IEC globals belong to a configuration or
+    /// resource.
     /// </summary>
     private static void DropObsoleteSections(List<ProjectNodeDefinition> nodes)
     {
-        nodes.RemoveAll(node => node.Name is "Build and Deployment" or "Project Documentation");
+        nodes.RemoveAll(node => node.Name is
+            "Build and Deployment" or
+            "Project Documentation" or
+            "Global Variable Lists");
     }
 
     /// <summary>
@@ -318,6 +325,15 @@ public sealed class DevicesViewModel : Tool
         SynchronizeLibraries(document, projectDirectory);
         LoadProjectTree(document, projectDirectory);
         return changed;
+    }
+
+    public void RefreshBuildOutputs()
+    {
+        if (_currentProject is null || _projectDirectory is null)
+            return;
+
+        _buildOutputNode = CreateBuildOutputNode(_projectDirectory);
+        LoadProjectTree(_currentProject, _projectDirectory);
     }
 
     public void SetDocumentSymbols(
@@ -437,6 +453,9 @@ public sealed class DevicesViewModel : Tool
     public void AddPou(NewPouDefinition definition) =>
         (_addPou ?? throw new InvalidOperationException("The project is not available."))(definition);
 
+    public void AddDataType(NewDataTypeDefinition definition) =>
+        (_addDataType ?? throw new InvalidOperationException("The project is not available."))(definition);
+
     public void AddConfiguration(string name) =>
         (_addConfiguration ?? throw new InvalidOperationException("The project is not available."))(name);
 
@@ -473,6 +492,13 @@ public sealed class DevicesViewModel : Tool
             .SelectMany(child => CreateTreeNodes(child, projectDirectory))
             .ToList();
 
+        if (_buildOutputNode is { } buildOutputNode)
+        {
+            var testsIndex = children.FindIndex(child =>
+                string.Equals(child.Name, "Tests", StringComparison.Ordinal));
+            children.Insert(testsIndex < 0 ? children.Count : testsIndex + 1, buildOutputNode);
+        }
+
         return new DeviceTreeNode(
             GetProjectTreeNodeDisplayName(definition),
             DeviceIcons.Get(definition.Icon),
@@ -482,6 +508,91 @@ public sealed class DevicesViewModel : Tool
             definition.LibraryFileName,
             kind: definition.Kind);
     }
+
+    private static DeviceTreeNode CreateBuildOutputNode(string projectDirectory)
+    {
+        var buildDirectory = Path.Combine(projectDirectory, "Build");
+        var children = Directory.Exists(buildDirectory)
+            ? CreateBuildFileSystemNodes(buildDirectory, projectDirectory)
+            : [];
+        return new DeviceTreeNode(
+            "Build",
+            DeviceIcons.Folder,
+            children,
+            false,
+            isTransient: true);
+    }
+
+    private static IReadOnlyList<DeviceTreeNode> CreateBuildFileSystemNodes(
+        string directory,
+        string projectDirectory)
+    {
+        string[] entries;
+        try
+        {
+            entries = Directory.GetFileSystemEntries(directory);
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
+
+        return entries
+            .OrderBy(path => !Directory.Exists(path))
+            .ThenBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
+            .Select(path => CreateBuildFileSystemNode(path, projectDirectory))
+            .ToList();
+    }
+
+    private static DeviceTreeNode CreateBuildFileSystemNode(
+        string path,
+        string projectDirectory)
+    {
+        if (Directory.Exists(path))
+        {
+            var isReparsePoint = (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
+            return new DeviceTreeNode(
+                Path.GetFileName(path),
+                DeviceIcons.Folder,
+                isReparsePoint ? [] : CreateBuildFileSystemNodes(path, projectDirectory),
+                false,
+                isTransient: true);
+        }
+
+        var extension = Path.GetExtension(path);
+        var canOpen = IsBuildTextFile(extension);
+        return new DeviceTreeNode(
+            Path.GetFileName(path),
+            GetBuildFileIcon(extension),
+            [],
+            false,
+            filePath: canOpen
+                ? NormalizeRelativePath(Path.GetRelativePath(projectDirectory, path))
+                : null,
+            isTransient: true);
+    }
+
+    private static bool IsBuildTextFile(string extension) =>
+        extension.Equals(".c", StringComparison.OrdinalIgnoreCase) ||
+        extension.Equals(".cpp", StringComparison.OrdinalIgnoreCase) ||
+        extension.Equals(".h", StringComparison.OrdinalIgnoreCase) ||
+        extension.Equals(".hpp", StringComparison.OrdinalIgnoreCase) ||
+        extension.Equals(".txt", StringComparison.OrdinalIgnoreCase) ||
+        extension.Equals(".map", StringComparison.OrdinalIgnoreCase) ||
+        extension.Equals(".conf", StringComparison.OrdinalIgnoreCase) ||
+        extension.Equals(".config", StringComparison.OrdinalIgnoreCase) ||
+        extension.Equals(".dts", StringComparison.OrdinalIgnoreCase) ||
+        extension.Equals(".json", StringComparison.OrdinalIgnoreCase) ||
+        extension.Equals(".yaml", StringComparison.OrdinalIgnoreCase) ||
+        extension.Equals(".yml", StringComparison.OrdinalIgnoreCase);
+
+    private static IImage GetBuildFileIcon(string extension) => extension.ToLowerInvariant() switch
+    {
+        ".c" or ".cpp" or ".h" or ".hpp" => DeviceIcons.Program,
+        ".elf" or ".hex" or ".bin" or ".uf2" => DeviceIcons.Binary,
+        _ => DeviceIcons.Settings
+    };
 
     private DeviceTreeNode CreateTreeNode(
         ProjectNodeDefinition definition,
@@ -883,15 +994,12 @@ public sealed class DevicesViewModel : Tool
                     "structures" => "Structures",
                     "enumerations" => "Enumerations",
                     "aliases" or "aliasesandsubranges" => "Aliases and Subranges",
+                    "arrays" => "Arrays",
                     _ => null
                 }
                 : null;
             return categoryName is null ? dataTypes : FindChild(dataTypes, categoryName) ?? dataTypes;
         }
-
-        if (segments.Length >= 3 &&
-            segments[1].Equals("GlobalVariables", StringComparison.OrdinalIgnoreCase))
-            return FindChild(root, "Global Variable Lists");
 
         if (segments.Length >= 3 && segments[1].Equals("Tests", StringComparison.OrdinalIgnoreCase))
             return FindChild(root, "Tests");
@@ -931,8 +1039,6 @@ public sealed class DevicesViewModel : Tool
     private static string GetProjectFileIcon(string relativePath)
     {
         var normalized = NormalizeRelativePath(relativePath);
-        if (normalized.Contains("/GlobalVariables/", StringComparison.OrdinalIgnoreCase))
-            return "globe";
         if (normalized.Contains("/Tests/", StringComparison.OrdinalIgnoreCase))
             return "task";
         if (normalized.Contains("/DataTypes/", StringComparison.OrdinalIgnoreCase))
@@ -1007,6 +1113,7 @@ internal static class DeviceIcons
     public static IImage Pous { get; } = Se98Icons.Places.Size16.FolderDocuments;
     public static IImage DataTypes { get; } = Se98Icons.Mimes.Size16.TextXGeneric;
     public static IImage Task { get; } = Se98Icons.Actions.Size16.Appointment;
+    public static IImage Binary { get; } = Se98Icons.Mimes.Size16.ApplicationOctetStream;
 
     public static IImage Get(string name) => name switch
     {

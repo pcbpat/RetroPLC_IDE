@@ -64,6 +64,7 @@ public sealed class DockFactory : Factory
         var tool1 = new DevicesViewModel(
                 OpenDocument,
                 AddPou,
+                AddDataType,
                 OpenLibrary,
                 ImportCodesysLibrary,
                 NavigateToLocation,
@@ -88,7 +89,7 @@ public sealed class DockFactory : Factory
             CanPin = true,
             CanClose = true
         };
-        tool6.BuildExited += OnBuildExited;
+        tool6.OperationExited += OnBuildOperationExited;
         _buildTool = tool6;
         var messagesTool = new MessagesViewModel(NavigateToLocation)
         {
@@ -324,6 +325,17 @@ public sealed class DockFactory : Factory
 
     private void OnProjectFileSystemChanged(object sender, FileSystemEventArgs e)
     {
+        if (_projectDirectory is { } projectDirectory &&
+            (IsPathInsideProject(
+                 e.FullPath,
+                 Path.Combine(projectDirectory, "Build")) ||
+             IsPathInsideProject(
+                 e.FullPath,
+                 Path.Combine(projectDirectory, ".retroplc"))))
+        {
+            return;
+        }
+
         var fileName = Path.GetFileName(e.FullPath);
         if (fileName.StartsWith(ProjectStore.ManifestFileName, StringComparison.OrdinalIgnoreCase))
             return;
@@ -424,6 +436,92 @@ public sealed class DockFactory : Factory
         catch
         {
             category.Children.Remove(node);
+            File.Delete(filePath);
+            throw;
+        }
+
+        _projectTool?.LoadProject(_currentProject, _projectDirectory);
+        OpenDocument(relativePath);
+    }
+
+    public void AddDataType(NewDataTypeDefinition definition)
+    {
+        if (_currentProject is null || _projectDirectory is null)
+            throw new InvalidOperationException("Open a project before adding a data type.");
+
+        if (!IecIdentifier.IsValid(definition.Name))
+            throw new InvalidDataException("The data type name is not a valid IEC identifier.");
+        if (string.IsNullOrWhiteSpace(definition.Definition))
+            throw new InvalidDataException("The data type definition cannot be empty.");
+
+        var (folderName, categoryName) = definition.Kind switch
+        {
+            DataTypeKind.Structure => ("Structures", "Structures"),
+            DataTypeKind.Enumeration => ("Enumerations", "Enumerations"),
+            DataTypeKind.Alias or DataTypeKind.Subrange =>
+                ("AliasesAndSubranges", "Aliases and Subranges"),
+            DataTypeKind.Array => ("Arrays", "Arrays"),
+            _ => throw new ArgumentOutOfRangeException(nameof(definition.Kind))
+        };
+
+        var relativePath = $"ProjectFiles/DataTypes/{folderName}/{definition.Name}.st";
+        var dataTypes = FindOrCreateDataTypesFolder(_currentProject);
+        var category = dataTypes.Children.FirstOrDefault(child =>
+            string.Equals(child.Name, categoryName, StringComparison.Ordinal));
+        if (category is not null && category.Children.Any(child =>
+                string.Equals(child.FilePath, relativePath, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new IOException($"A data type named '{definition.Name}' already exists.");
+        }
+
+        var filePath = Path.Combine(
+            _projectDirectory,
+            relativePath.Replace('/', Path.DirectorySeparatorChar));
+        if (File.Exists(filePath))
+            throw new IOException($"The source file '{relativePath}' already exists.");
+
+        var categoryWasAdded = false;
+        if (category is null)
+        {
+            category = new ProjectNodeDefinition
+            {
+                Name = categoryName,
+                Icon = "folder",
+                IsExpanded = true
+            };
+            dataTypes.Children.Add(category);
+            categoryWasAdded = true;
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+        using (var stream = new FileStream(filePath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+        using (var writer = new StreamWriter(stream, new UTF8Encoding(false)))
+        {
+            writer.Write(CreateDataTypeSource(definition));
+        }
+
+        var node = new ProjectNodeDefinition
+        {
+            Name = definition.Name,
+            Icon = "data-types",
+            FilePath = relativePath,
+            IsExpanded = true
+        };
+        category.Children.Add(node);
+        category.IsExpanded = true;
+        dataTypes.IsExpanded = true;
+
+        try
+        {
+            ProjectStore.Save(
+                _currentProject,
+                Path.Combine(_projectDirectory, ProjectStore.ManifestFileName));
+        }
+        catch
+        {
+            category.Children.Remove(node);
+            if (categoryWasAdded)
+                dataTypes.Children.Remove(category);
             File.Delete(filePath);
             throw;
         }
@@ -776,6 +874,25 @@ public sealed class DockFactory : Factory
         return FindChild(pous, categoryName);
     }
 
+    private static ProjectNodeDefinition FindOrCreateDataTypesFolder(ProjectDocument project)
+    {
+        var root = project.Tree.FirstOrDefault()
+                   ?? throw new InvalidDataException("The project tree is empty.");
+        var dataTypes = root.Children.FirstOrDefault(child =>
+            string.Equals(child.Name, "Data Types", StringComparison.Ordinal));
+        if (dataTypes is not null)
+            return dataTypes;
+
+        dataTypes = new ProjectNodeDefinition
+        {
+            Name = "Data Types",
+            Icon = "data-types",
+            IsExpanded = true
+        };
+        root.Children.Insert(0, dataTypes);
+        return dataTypes;
+    }
+
     private static void ValidatePouDefinition(NewPouDefinition definition)
     {
         if (!IecIdentifier.IsValid(definition.Name))
@@ -818,6 +935,22 @@ public sealed class DockFactory : Factory
                "VAR\nEND_VAR\n\nEND_FUNCTION_BLOCK\n";
     }
 
+    private static string CreateDataTypeSource(NewDataTypeDefinition definition)
+    {
+        var value = definition.Definition.Trim();
+        return definition.Kind switch
+        {
+            DataTypeKind.Structure =>
+                $"TYPE\n    {definition.Name} : STRUCT\n" +
+                string.Join('\n', value.Replace("\r\n", "\n").Split('\n')
+                    .Select(line => $"        {line.TrimEnd()}")) +
+                "\n    END_STRUCT;\nEND_TYPE\n",
+            DataTypeKind.Enumeration =>
+                $"TYPE\n    {definition.Name} : ({value});\nEND_TYPE\n",
+            _ => $"TYPE\n    {definition.Name} : {value};\nEND_TYPE\n"
+        };
+    }
+
     private static string GetDefaultValue(string returnType) => returnType.ToUpperInvariant() switch
     {
         "BOOL" => "FALSE",
@@ -827,20 +960,33 @@ public sealed class DockFactory : Factory
         _ => "0"
     };
 
-    public event Action<int>? BuildExited;
+    public event Action<BuildOperation, int>? BuildOperationExited;
 
-    private void OnBuildExited(int exitCode)
+    private void OnBuildOperationExited(BuildOperation operation, int exitCode)
     {
         Dispatcher.UIThread.Post(() =>
         {
-            if (_currentProject is not null && _projectDirectory is not null)
-                _projectTool?.LoadProject(_currentProject, _projectDirectory);
+            if (exitCode == 0 &&
+                operation is BuildOperation.Verify or BuildOperation.Build &&
+                _currentProject is not null && _projectDirectory is not null)
+            {
+                _projectTool?.RefreshBuildOutputs();
+            }
 
-            BuildExited?.Invoke(exitCode);
+            BuildOperationExited?.Invoke(operation, exitCode);
         });
     }
 
-    public void Build()
+    public void Verify() => RunBuildTool((tool, directory, project) =>
+        tool.PrepareVerify(directory, project.Name));
+
+    public void Build() => RunBuildTool((tool, directory, project) =>
+        tool.PrepareBuild(directory, project.Name));
+
+    public void Download() => RunBuildTool((tool, directory, _) =>
+        tool.PrepareDownload(directory));
+
+    private void RunBuildTool(Action<BuildViewModel, string, ProjectDocument> prepare)
     {
         if (_terminalDock is null || _buildTool is null)
         {
@@ -852,7 +998,7 @@ public sealed class DockFactory : Factory
             return;
         }
 
-        _buildTool.PrepareRun(_projectDirectory, _currentProject.Name);
+        prepare(_buildTool, _projectDirectory, _currentProject);
         if (_terminalDock.VisibleDockables?.Contains(_buildTool) != true)
         {
             AddDockable(_terminalDock, _buildTool);
