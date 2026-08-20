@@ -23,6 +23,7 @@
     </ItemGroup>
 
     <ItemGroup>
+        <ProjectReference Include="..\RetroPLC.BuildHost\RetroPLC.BuildHost.csproj" />
         <ProjectReference Include="..\RetroPLC.Icons\RetroPLC.Icons.csproj" />
         <ProjectReference Include="..\RetroPLC.LanguageServerHost\RetroPLC.LanguageServerHost.csproj" />
         <ProjectReference Include="..\RetroPLC.Theme\RetroPLC.Theme.csproj" />

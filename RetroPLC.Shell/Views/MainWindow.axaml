@@ -105,8 +105,43 @@
                     <MenuItem Header="Toolbars" IsEnabled="False" />
                     <MenuItem Header="Solution Explorer" IsEnabled="False" />
                     <MenuItem Header="Properties Window" IsEnabled="False" />
-                    <MenuItem Header="_Appearance"
-                              Command="{Binding OpenAppearanceCommand}" />
+                    <MenuItem Header="_Appearance">
+                        <MenuItem Header="_Dark Mode"
+                                  Tag="Dark"
+                                  ToggleType="Radio"
+                                  GroupName="AppearanceColorMode"
+                                  IsChecked="True"
+                                  Click="AppearanceMode_OnClick" />
+                        <MenuItem Header="_Light Mode"
+                                  Tag="Light"
+                                  ToggleType="Radio"
+                                  GroupName="AppearanceColorMode"
+                                  Click="AppearanceMode_OnClick" />
+                        <Separator />
+                        <MenuItem Header="_Font size">
+                            <MenuItem Header="8" Tag="8" ToggleType="Radio"
+                                      GroupName="AppearanceFontSize" Click="FontSize_OnClick" />
+                            <MenuItem Header="9" Tag="9" ToggleType="Radio"
+                                      GroupName="AppearanceFontSize" Click="FontSize_OnClick" />
+                            <MenuItem Header="10" Tag="10" ToggleType="Radio"
+                                      GroupName="AppearanceFontSize" Click="FontSize_OnClick" />
+                            <MenuItem Header="11" Tag="11" ToggleType="Radio"
+                                      GroupName="AppearanceFontSize" Click="FontSize_OnClick" />
+                            <MenuItem Header="12" Tag="12" ToggleType="Radio"
+                                      GroupName="AppearanceFontSize" IsChecked="True"
+                                      Click="FontSize_OnClick" />
+                            <MenuItem Header="13" Tag="13" ToggleType="Radio"
+                                      GroupName="AppearanceFontSize" Click="FontSize_OnClick" />
+                            <MenuItem Header="14" Tag="14" ToggleType="Radio"
+                                      GroupName="AppearanceFontSize" Click="FontSize_OnClick" />
+                            <MenuItem Header="16" Tag="16" ToggleType="Radio"
+                                      GroupName="AppearanceFontSize" Click="FontSize_OnClick" />
+                            <MenuItem Header="18" Tag="18" ToggleType="Radio"
+                                      GroupName="AppearanceFontSize" Click="FontSize_OnClick" />
+                            <MenuItem Header="20" Tag="20" ToggleType="Radio"
+                                      GroupName="AppearanceFontSize" Click="FontSize_OnClick" />
+                        </MenuItem>
+                    </MenuItem>
                     <MenuItem Header="Toolbox" IsEnabled="False" />
                     <MenuItem Header="Error List" IsEnabled="False" />
                     <MenuItem Header="Output" IsEnabled="False" />

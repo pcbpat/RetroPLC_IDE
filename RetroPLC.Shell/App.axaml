@@ -2,8 +2,6 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="using:RetroPLC.Shell"
              xmlns:theme="using:RetroPLC.Theme"
-             xmlns:edit="clr-namespace:AvaloniaEdit;assembly=AvaloniaEdit"
-             xmlns:common="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia"
              x:Class="RetroPLC.Shell.App"
              RequestedThemeVariant="{x:Static theme:ThemeVariants.Dark}">
 
@@ -13,16 +11,5 @@
 
     <Application.Styles>
         <theme:RetroPlcTheme />
-
-        <!-- AvaloniaEdit's Simple theme composes with the Classic control theme. -->
-        <StyleInclude Source="avares://AvaloniaEdit/Themes/Simple/AvaloniaEdit.xaml" />
-        <Style Selector="edit|TextEditor">
-            <Setter Property="Background"
-                    Value="{DynamicResource {x:Static common:SystemColors.WindowBrushKey}}" />
-            <Setter Property="Foreground"
-                    Value="{DynamicResource {x:Static common:SystemColors.ControlTextBrushKey}}" />
-            <Setter Property="LineNumbersForeground"
-                    Value="{DynamicResource {x:Static common:SystemColors.GrayTextBrushKey}}" />
-        </Style>
     </Application.Styles>
 </Application>

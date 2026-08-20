@@ -12,6 +12,7 @@ using Dock.Model.Core;
 using Dock.Model.Mvvm;
 using Dock.Model.Mvvm.Controls;
 using Dock.Settings;
+using RetroPLC.BuildHost;
 using RetroPLC.LanguageServerHost;
 using RetroPLC.Shell.Language;
 using RetroPLC.Shell.Models;
@@ -25,16 +26,13 @@ public sealed class DockFactory : Factory
     private const double MaximumFloatingWidth = 640;
     private const double MaximumFloatingHeight = 480;
 
-    private readonly MainWindowViewModel _settings;
     private IRootDock? _rootDock;
     private IDocumentDock? _documentDock;
     private IToolDock? _terminalDock;
-    private IToolDock? _appearanceDock;
     private BuildViewModel? _buildTool;
     private ReferencesViewModel? _referencesTool;
     private MessagesViewModel? _messagesTool;
     private DevicesViewModel? _projectTool;
-    private AppearanceViewModel? _appearanceTool;
     private ProjectDocument? _currentProject;
     private string? _projectDirectory;
     private int _terminalNumber;
@@ -51,9 +49,8 @@ public sealed class DockFactory : Factory
         new(StringComparer.OrdinalIgnoreCase);
     private CancellationTokenSource? _languageServerCancellation;
 
-    public DockFactory(MainWindowViewModel settings)
+    public DockFactory()
     {
-        _settings = settings;
         _languageClient.DiagnosticsPublished += OnDiagnosticsPublished;
         _languageClient.ServerError += (_, args) =>
             System.Diagnostics.Debug.WriteLine(args.Message);
@@ -81,7 +78,6 @@ public sealed class DockFactory : Factory
         var tool2 = new ToolViewModel { Id = "Tool2", Title = "Tool2", CanPin = true };
         var tool3 = new ToolViewModel { Id = "Tool3", Title = "Tool3", CanPin = true };
         var tool4 = new ToolViewModel { Id = "Tool4", Title = "Tool4", CanPin = true };
-        var tool5 = new ToolViewModel { Id = "Tool5", Title = "Tool5", CanPin = true };
         var tool6 = new BuildViewModel
         {
             Id = "Build",
@@ -110,15 +106,6 @@ public sealed class DockFactory : Factory
         };
         _referencesTool = referencesTool;
         var tool7 = new ToolViewModel { Id = "Tool7", Title = "Tool7", CanPin = true };
-        var tool8 = new AppearanceViewModel(_settings)
-        {
-            Id = "Appearance",
-            Title = "Appearance",
-            CanPin = true,
-            CanClose = true
-        };
-        _appearanceTool = tool8;
-
         var leftDock = new ToolDock
         {
             Proportion = 0.22,
@@ -154,27 +141,12 @@ public sealed class DockFactory : Factory
                 bottomDock)
         };
 
-        var appearanceDock = new ToolDock
-        {
-            ActiveDockable = tool8,
-            Alignment = Alignment.Right,
-            VisibleDockables = CreateList<IDockable>(tool8, tool5)
-        };
-        _appearanceDock = appearanceDock;
-
-        var rightDock = new ProportionalDock
+        var rightDock = new ToolDock
         {
             Proportion = 0.25,
-            Orientation = Dock.Model.Core.Orientation.Vertical,
-            VisibleDockables = CreateList<IDockable>(
-                appearanceDock,
-                new ProportionalDockSplitter(),
-                new ToolDock
-                {
-                    ActiveDockable = tool7,
-                    Alignment = Alignment.Right,
-                    VisibleDockables = CreateList<IDockable>(tool7)
-                })
+            ActiveDockable = tool7,
+            Alignment = Alignment.Right,
+            VisibleDockables = CreateList<IDockable>(tool7)
         };
 
         var mainDock = new ProportionalDock
@@ -844,22 +816,6 @@ public sealed class DockFactory : Factory
         AddDockable(_terminalDock, tool);
         SetActiveDockable(tool);
         SetFocusedDockable(_terminalDock, tool);
-    }
-
-    public void OpenAppearance()
-    {
-        if (_appearanceDock is null || _appearanceTool is null)
-        {
-            return;
-        }
-
-        if (_appearanceDock.VisibleDockables?.Contains(_appearanceTool) != true)
-        {
-            AddDockable(_appearanceDock, _appearanceTool);
-        }
-
-        SetActiveDockable(_appearanceTool);
-        SetFocusedDockable(_appearanceDock, _appearanceTool);
     }
 
     private static ProjectNodeDefinition FindPouCategory(ProjectDocument project, string categoryName)

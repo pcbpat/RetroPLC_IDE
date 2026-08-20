@@ -231,6 +231,28 @@ public partial class MainWindow : Window
             ? WindowState.Normal
             : WindowState.FullScreen;
 
+    private void AppearanceMode_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem { Tag: { } mode } &&
+            DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.IsDarkMode = string.Equals(
+                mode.ToString(),
+                "Dark",
+                StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private void FontSize_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem { Tag: { } value } &&
+            DataContext is MainWindowViewModel viewModel &&
+            double.TryParse(value.ToString(), out var size))
+        {
+            viewModel.TextSize = size;
+        }
+    }
+
     private void ResizeGrip_OnPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)

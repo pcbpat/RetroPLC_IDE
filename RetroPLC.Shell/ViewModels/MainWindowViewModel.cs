@@ -7,6 +7,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.Input;
 using Dock.Model.Controls;
 using Dock.Model.Core;
+using RetroPLC.BuildHost;
 using RetroPLC.Shell.Models;
 using RetroPLC.Shell.ViewModels.Docking;
 using RetroPLC.Theme;
@@ -26,8 +27,6 @@ public partial class MainWindowViewModel : ViewModelBase
     private bool _isLoadingProject;
     private string _plcStatus = "Offline";
 
-    public IReadOnlyList<double> TextSizes { get; } = [9, 10, 11, 12, 13, 14, 16, 18, 20];
-
     public IRootDock? Layout
     {
         get => _layout;
@@ -43,7 +42,6 @@ public partial class MainWindowViewModel : ViewModelBase
     public IRelayCommand FormatDocumentCommand { get; }
     public IRelayCommand CloseAllDocumentsCommand { get; }
     public IRelayCommand OpenTerminalCommand { get; }
-    public IRelayCommand OpenAppearanceCommand { get; }
     public IRelayCommand GoOnlineCommand { get; }
     public IRelayCommand GoOfflineCommand { get; }
     public IRelayCommand LoginCommand { get; }
@@ -90,7 +88,7 @@ public partial class MainWindowViewModel : ViewModelBase
         get => _textSize;
         set
         {
-            var size = System.Math.Clamp(value, 9, 20);
+            var size = System.Math.Clamp(value, 8, 20);
             if (SetProperty(ref _textSize, size))
             {
                 ApplyTextSize();
@@ -154,7 +152,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
     public MainWindowViewModel()
     {
-        _factory = new DockFactory(this);
+        _factory = new DockFactory();
         ResetLayoutCommand = new RelayCommand(CreateLayout);
         SaveActiveDocumentCommand = new RelayCommand(_factory.SaveActiveDocument);
         SaveAllDocumentsCommand = new RelayCommand(_factory.SaveAllDocuments);
@@ -172,7 +170,6 @@ public partial class MainWindowViewModel : ViewModelBase
             () => _isProjectOpen);
         CloseAllDocumentsCommand = new RelayCommand(_factory.CloseAllDocuments);
         OpenTerminalCommand = new RelayCommand(_factory.OpenTerminal);
-        OpenAppearanceCommand = new RelayCommand(_factory.OpenAppearance, () => _isProjectOpen);
         GoOnlineCommand = new RelayCommand(GoOnline, () => !_isOnline);
         GoOfflineCommand = new RelayCommand(GoOffline, () => _isOnline);
         LoginCommand = new RelayCommand(Login, () => _isOnline && !_isLoggedIn);
@@ -200,7 +197,6 @@ public partial class MainWindowViewModel : ViewModelBase
         GoToDefinitionCommand.NotifyCanExecuteChanged();
         FindReferencesCommand.NotifyCanExecuteChanged();
         FormatDocumentCommand.NotifyCanExecuteChanged();
-        OpenAppearanceCommand.NotifyCanExecuteChanged();
     }
 
     private void ApplyTextSize()
