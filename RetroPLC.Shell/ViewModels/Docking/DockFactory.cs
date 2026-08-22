@@ -923,7 +923,7 @@ public sealed class DockFactory : Factory
         Dispatcher.UIThread.Post(() =>
         {
             if (exitCode == 0 &&
-                operation is BuildOperation.Verify or BuildOperation.Build &&
+                operation is BuildOperation.Verify or BuildOperation.Build or BuildOperation.Download &&
                 _currentProject is not null && _projectDirectory is not null)
             {
                 _projectTool?.RefreshBuildOutputs();
@@ -939,8 +939,8 @@ public sealed class DockFactory : Factory
     public void Build() => RunBuildTool((tool, directory, project) =>
         tool.PrepareBuild(directory, project.Name));
 
-    public void Download() => RunBuildTool((tool, directory, _) =>
-        tool.PrepareDownload(directory));
+    public void Download() => RunBuildTool((tool, directory, project) =>
+        tool.PrepareDownload(directory, project.Name));
 
     private void RunBuildTool(Action<BuildViewModel, string, ProjectDocument> prepare)
     {

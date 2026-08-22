@@ -48,7 +48,7 @@ public sealed class FirmwareBuildSession
         if (exitCode != 0)
             return Complete(exitCode);
 
-        if (Operation == BuildOperation.Build &&
+        if (Operation is BuildOperation.Build or BuildOperation.Download &&
             _stage == BuildStage.StructuredText &&
             _zephyrContext is { } context)
         {
@@ -56,18 +56,27 @@ public sealed class FirmwareBuildSession
             return new BuildProcessOutcome(_service.CreateZephyrBuildProcess(context), null);
         }
 
-        if (Operation == BuildOperation.Build &&
+        if (Operation is BuildOperation.Build or BuildOperation.Download &&
             _stage == BuildStage.Zephyr &&
             _zephyrContext is { } completedContext)
         {
             try
             {
                 FirmwareBuildService.PublishBuildArtifacts(completedContext);
+
+                if (Operation == BuildOperation.Download)
+                {
+                    _stage = BuildStage.FirmwareUpdate;
+                    return new BuildProcessOutcome(
+                        _service.CreateFirmwareUpdateProcess(completedContext),
+                        null);
+                }
             }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
             {
                 System.Diagnostics.Debug.WriteLine(
-                    $"Unable to publish Zephyr build artifacts: {exception.Message}");
+                    $"Unable to prepare the firmware output: {exception.Message}");
                 return Complete(-1);
             }
         }
@@ -105,16 +114,14 @@ public sealed class FirmwareBuildService
             context);
     }
 
-    public FirmwareBuildSession StartDownload(string projectDirectory)
+    public FirmwareBuildSession StartDownload(string projectDirectory, string projectName)
     {
         var context = ResolveZephyrBuildContext(projectDirectory);
         return new FirmwareBuildSession(
             this,
             BuildOperation.Download,
-            CreateWestProcess(
-                context,
-                ["flash", "-d", context.BuildDirectory]),
-            BuildStage.Zephyr,
+            CreateStrucppCompilerProcess(projectDirectory, projectName),
+            BuildStage.StructuredText,
             context);
     }
 
@@ -161,14 +168,41 @@ public sealed class FirmwareBuildService
             [
                 "build",
                 "-p", "always",
+                "--sysbuild",
                 "-b", context.Board,
                 "-d", context.BuildDirectory,
                 context.ApplicationDirectory,
                 "--",
-                $"-DRETROPLC_GENERATED_DIR={context.GeneratedDirectory}",
-                "-DEXTRA_CFLAGS=-w",
-                "-DEXTRA_CXXFLAGS=-w"
+                $"-Dapp_RETROPLC_GENERATED_DIR={context.GeneratedDirectory}"
             ]);
+
+    internal BuildProcess CreateFirmwareUpdateProcess(ZephyrBuildContext context)
+    {
+        var firmwarePath = Path.Combine(context.ArtifactsDirectory, "firmware.bin");
+        if (!File.Exists(firmwarePath))
+            throw new FileNotFoundException(
+                "The firmware binary was not produced by the Zephyr build.",
+                firmwarePath);
+
+        if (!OperatingSystem.IsLinux())
+            throw new PlatformNotSupportedException(
+                "The packaged mcumgrctl firmware updater currently supports Linux only.");
+
+        var executablePath = Path.Combine(
+            AppContext.BaseDirectory,
+            "BuildTools",
+            "mcumgrctl-linux");
+        if (!File.Exists(executablePath))
+            throw new FileNotFoundException(
+                "The mcumgrctl firmware updater was not found.",
+                executablePath);
+        StrucppToolchain.EnsureExecutable(executablePath);
+
+        return CreatePlatformProcess(
+            executablePath,
+            ["-u", ".", "firmware", "update", "--timeout", "5000", firmwarePath],
+            context.ProjectBuildDirectory);
+    }
 
     private static BuildProcess CreateWestProcess(
         ZephyrBuildContext context,
@@ -225,6 +259,7 @@ public sealed class FirmwareBuildService
         return new ZephyrBuildContext(
             workspaceDirectory,
             applicationDirectory,
+            buildRoot,
             Path.Combine(buildRoot, "Generated"),
             Path.Combine(buildRoot, "Zephyr", MakeSafeDirectoryName(board)),
             Path.Combine(buildRoot, "Artifacts"),
@@ -234,12 +269,12 @@ public sealed class FirmwareBuildService
 
     internal static void PublishBuildArtifacts(ZephyrBuildContext context)
     {
-        var zephyrOutputDirectory = Path.Combine(context.BuildDirectory, "zephyr");
+        var zephyrOutputDirectory = Path.Combine(context.BuildDirectory, "app", "zephyr");
         var artifacts = new[]
         {
             (Source: "zephyr.elf", Destination: "firmware.elf"),
-            (Source: "zephyr.hex", Destination: "firmware.hex"),
-            (Source: "zephyr.bin", Destination: "firmware.bin"),
+            (Source: "zephyr.signed.hex", Destination: "firmware.hex"),
+            (Source: "zephyr.signed.bin", Destination: "firmware.bin"),
             (Source: "zephyr.uf2", Destination: "firmware.uf2"),
             (Source: "zephyr.map", Destination: "firmware.map")
         };
@@ -288,12 +323,14 @@ internal enum BuildStage
 {
     StructuredText,
     Zephyr,
+    FirmwareUpdate,
     Complete
 }
 
 internal sealed record ZephyrBuildContext(
     string WorkspaceDirectory,
     string ApplicationDirectory,
+    string ProjectBuildDirectory,
     string GeneratedDirectory,
     string BuildDirectory,
     string ArtifactsDirectory,

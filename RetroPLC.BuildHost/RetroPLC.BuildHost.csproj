@@ -9,5 +9,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\RetroPLC.LanguageServerHost\RetroPLC.LanguageServerHost.csproj" />
+
+    <Content Include="mcumgrctl-linux">
+      <Link>BuildTools\mcumgrctl-linux</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
   </ItemGroup>
 </Project>
