@@ -1,0 +1,3 @@
+[submodule "RetroPLC.Icons/Win98SE"]
+	path = RetroPLC.Icons/Win98SE
+	url = https://github.com/nestoris/Win98SE.git
