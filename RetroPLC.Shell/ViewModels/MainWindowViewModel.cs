@@ -51,6 +51,8 @@ public partial class MainWindowViewModel : ViewModelBase
     public IRelayCommand ResetPlcCommand { get; }
     public IRelayCommand VerifyCommand { get; }
     public IRelayCommand BuildCommand { get; }
+    public IRelayCommand RebuildCommand { get; }
+    public IRelayCommand CleanCommand { get; }
     public IRelayCommand DownloadCommand { get; }
 
     public string PlcStatus
@@ -179,6 +181,8 @@ public partial class MainWindowViewModel : ViewModelBase
         ResetPlcCommand = new RelayCommand(ResetPlc, () => _isLoggedIn);
         VerifyCommand = new RelayCommand(Verify, () => _isProjectOpen);
         BuildCommand = new RelayCommand(Build, () => _isProjectOpen);
+        RebuildCommand = new RelayCommand(Rebuild, () => _isProjectOpen);
+        CleanCommand = new RelayCommand(Clean, () => _isProjectOpen);
         DownloadCommand = new RelayCommand(Download, () => _isProjectOpen && !_isRunning);
         _factory.BuildOperationExited += OnBuildOperationExited;
         ApplyTheme();
@@ -192,6 +196,8 @@ public partial class MainWindowViewModel : ViewModelBase
         IsProjectOpen = true;
         VerifyCommand.NotifyCanExecuteChanged();
         BuildCommand.NotifyCanExecuteChanged();
+        RebuildCommand.NotifyCanExecuteChanged();
+        CleanCommand.NotifyCanExecuteChanged();
         DownloadCommand.NotifyCanExecuteChanged();
         RenameSymbolCommand.NotifyCanExecuteChanged();
         GoToDefinitionCommand.NotifyCanExecuteChanged();
@@ -303,6 +309,16 @@ public partial class MainWindowViewModel : ViewModelBase
         StartBuildOperation(BuildOperation.Build, "building…", _factory.Build);
     }
 
+    private void Rebuild()
+    {
+        StartBuildOperation(BuildOperation.Rebuild, "rebuilding…", _factory.Rebuild);
+    }
+
+    private void Clean()
+    {
+        StartBuildOperation(BuildOperation.Clean, "cleaning…", _factory.Clean);
+    }
+
     private void StartBuildOperation(BuildOperation operation, string status, System.Action action)
     {
         PlcStatus = _isOnline ? $"Online · {status}" : $"Offline · {status}";
@@ -323,6 +339,8 @@ public partial class MainWindowViewModel : ViewModelBase
         {
             BuildOperation.Verify => "verification",
             BuildOperation.Build => "build",
+            BuildOperation.Rebuild => "rebuild",
+            BuildOperation.Clean => "clean",
             BuildOperation.Download => "download",
             _ => "operation"
         };

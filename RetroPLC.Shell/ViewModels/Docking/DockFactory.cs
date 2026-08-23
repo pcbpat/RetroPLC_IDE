@@ -75,9 +75,6 @@ public sealed class DockFactory : Factory
             tool1.LoadProject(_currentProject, _projectDirectory);
             tool1.SetDocumentSymbols(_currentProject, _projectDirectory, _projectSymbols);
         }
-        var tool2 = new ToolViewModel { Id = "Tool2", Title = "Tool2", CanPin = true };
-        var tool3 = new ToolViewModel { Id = "Tool3", Title = "Tool3", CanPin = true };
-        var tool4 = new ToolViewModel { Id = "Tool4", Title = "Tool4", CanPin = true };
         var tool6 = new BuildViewModel
         {
             Id = "Build",
@@ -105,13 +102,12 @@ public sealed class DockFactory : Factory
             CanClose = true
         };
         _referencesTool = referencesTool;
-        var tool7 = new ToolViewModel { Id = "Tool7", Title = "Tool7", CanPin = true };
         var leftDock = new ToolDock
         {
             Proportion = 0.22,
             Alignment = Alignment.Left,
             ActiveDockable = tool1,
-            VisibleDockables = CreateList<IDockable>(tool1, tool3, tool4, tool2)
+            VisibleDockables = CreateList<IDockable>(tool1)
         };
 
         var documents = new DocumentDock
@@ -141,23 +137,13 @@ public sealed class DockFactory : Factory
                 bottomDock)
         };
 
-        var rightDock = new ToolDock
-        {
-            Proportion = 0.25,
-            ActiveDockable = tool7,
-            Alignment = Alignment.Right,
-            VisibleDockables = CreateList<IDockable>(tool7)
-        };
-
         var mainDock = new ProportionalDock
         {
             Orientation = Dock.Model.Core.Orientation.Horizontal,
             VisibleDockables = CreateList<IDockable>(
                 leftDock,
                 new ProportionalDockSplitter(),
-                centerDock,
-                new ProportionalDockSplitter(),
-                rightDock)
+                centerDock)
         };
 
         var root = CreateRootDock();
@@ -923,7 +909,8 @@ public sealed class DockFactory : Factory
         Dispatcher.UIThread.Post(() =>
         {
             if (exitCode == 0 &&
-                operation is BuildOperation.Verify or BuildOperation.Build or BuildOperation.Download &&
+                operation is BuildOperation.Verify or BuildOperation.Build or BuildOperation.Rebuild or
+                    BuildOperation.Clean or BuildOperation.Download &&
                 _currentProject is not null && _projectDirectory is not null)
             {
                 _projectTool?.RefreshBuildOutputs();
@@ -938,6 +925,12 @@ public sealed class DockFactory : Factory
 
     public void Build() => RunBuildTool((tool, directory, project) =>
         tool.PrepareBuild(directory, project.Name));
+
+    public void Rebuild() => RunBuildTool((tool, directory, project) =>
+        tool.PrepareRebuild(directory, project.Name));
+
+    public void Clean() => RunBuildTool((tool, directory, _) =>
+        tool.PrepareClean(directory));
 
     public void Download() => RunBuildTool((tool, directory, project) =>
         tool.PrepareDownload(directory, project.Name));
@@ -1648,18 +1641,6 @@ public sealed class DockFactory : Factory
 
     public override void InitLayout(IDockable layout)
     {
-        ContextLocator = new Dictionary<string, Func<object?>>
-        {
-            ["Tool1"] = () => new Tool1(),
-            ["Tool2"] = () => new Tool2(),
-            ["Tool3"] = () => new Tool3(),
-            ["Tool4"] = () => new Tool4(),
-            ["Tool5"] = () => new Tool5(),
-            ["Tool6"] = () => new Tool6(),
-            ["Tool7"] = () => new Tool7(),
-            ["Tool8"] = () => new Tool8()
-        };
-
         DockableLocator = new Dictionary<string, Func<IDockable?>>
         {
             ["Root"] = () => _rootDock,

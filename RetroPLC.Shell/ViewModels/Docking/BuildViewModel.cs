@@ -29,6 +29,12 @@ public sealed class BuildViewModel : Tool
     public void PrepareBuild(string projectDirectory, string projectName) =>
         StartSession(_buildService.StartBuild(projectDirectory, projectName));
 
+    public void PrepareRebuild(string projectDirectory, string projectName) =>
+        StartSession(_buildService.StartRebuild(projectDirectory, projectName));
+
+    public void PrepareClean(string projectDirectory) =>
+        StartSession(_buildService.StartClean(projectDirectory));
+
     public void PrepareDownload(string projectDirectory, string projectName) =>
         StartSession(_buildService.StartDownload(projectDirectory, projectName));
 

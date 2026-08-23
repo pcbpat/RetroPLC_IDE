@@ -179,12 +179,12 @@
                     <MenuItem Header="Verify PLC Project" Command="{Binding VerifyCommand}" />
                     <MenuItem Header="Build PLC Project" InputGesture="F7" Command="{Binding BuildCommand}" />
                     <MenuItem Header="Download PLC Project" Command="{Binding DownloadCommand}" />
-                    <MenuItem Header="Rebuild PLC Project" IsEnabled="False" />
-                    <MenuItem Header="Clean PLC Project" IsEnabled="False" />
+                    <MenuItem Header="Rebuild PLC Project" Command="{Binding RebuildCommand}" />
+                    <MenuItem Header="Clean PLC Project" Command="{Binding CleanCommand}" />
                     <Separator />
                     <MenuItem Header="Build Solution" Command="{Binding BuildCommand}" />
-                    <MenuItem Header="Rebuild Solution" IsEnabled="False" />
-                    <MenuItem Header="Clean Solution" IsEnabled="False" />
+                    <MenuItem Header="Rebuild Solution" Command="{Binding RebuildCommand}" />
+                    <MenuItem Header="Clean Solution" Command="{Binding CleanCommand}" />
                     <Separator />
                     <MenuItem Header="Check All Objects" Command="{Binding BuildCommand}" />
                 </MenuItem>

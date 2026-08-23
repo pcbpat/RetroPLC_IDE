@@ -6,6 +6,8 @@ public enum BuildOperation
 {
     Verify,
     Build,
+    Rebuild,
+    Clean,
     Download
 }
 
@@ -23,6 +25,7 @@ public sealed class FirmwareBuildSession
 {
     private readonly FirmwareBuildService _service;
     private readonly ZephyrBuildContext? _zephyrContext;
+    private readonly string _pristineMode;
     private BuildStage _stage;
 
     internal FirmwareBuildSession(
@@ -30,13 +33,15 @@ public sealed class FirmwareBuildSession
         BuildOperation operation,
         BuildProcess initialProcess,
         BuildStage stage,
-        ZephyrBuildContext? zephyrContext)
+        ZephyrBuildContext? zephyrContext,
+        string pristineMode = "auto")
     {
         _service = service;
         Operation = operation;
         InitialProcess = initialProcess;
         _stage = stage;
         _zephyrContext = zephyrContext;
+        _pristineMode = pristineMode;
     }
 
     public BuildOperation Operation { get; }
@@ -48,15 +53,17 @@ public sealed class FirmwareBuildSession
         if (exitCode != 0)
             return Complete(exitCode);
 
-        if (Operation is BuildOperation.Build or BuildOperation.Download &&
+        if (Operation is BuildOperation.Build or BuildOperation.Rebuild or BuildOperation.Download &&
             _stage == BuildStage.StructuredText &&
             _zephyrContext is { } context)
         {
             _stage = BuildStage.Zephyr;
-            return new BuildProcessOutcome(_service.CreateZephyrBuildProcess(context), null);
+            return new BuildProcessOutcome(
+                _service.CreateZephyrBuildProcess(context, _pristineMode),
+                null);
         }
 
-        if (Operation is BuildOperation.Build or BuildOperation.Download &&
+        if (Operation is BuildOperation.Build or BuildOperation.Rebuild or BuildOperation.Download &&
             _stage == BuildStage.Zephyr &&
             _zephyrContext is { } completedContext)
         {
@@ -114,6 +121,26 @@ public sealed class FirmwareBuildService
             context);
     }
 
+    public FirmwareBuildSession StartRebuild(string projectDirectory, string projectName)
+    {
+        var context = ResolveZephyrBuildContext(projectDirectory);
+        return new FirmwareBuildSession(
+            this,
+            BuildOperation.Rebuild,
+            CreateStrucppCompilerProcess(projectDirectory, projectName),
+            BuildStage.StructuredText,
+            context,
+            "always");
+    }
+
+    public FirmwareBuildSession StartClean(string projectDirectory) =>
+        new(
+            this,
+            BuildOperation.Clean,
+            CreateCleanProcess(projectDirectory),
+            BuildStage.Clean,
+            null);
+
     public FirmwareBuildSession StartDownload(string projectDirectory, string projectName)
     {
         var context = ResolveZephyrBuildContext(projectDirectory);
@@ -162,12 +189,14 @@ public sealed class FirmwareBuildService
         return CreatePlatformProcess(compilerPath, arguments, projectDirectory);
     }
 
-    internal BuildProcess CreateZephyrBuildProcess(ZephyrBuildContext context) =>
+    internal BuildProcess CreateZephyrBuildProcess(
+        ZephyrBuildContext context,
+        string pristineMode) =>
         CreateWestProcess(
             context,
             [
                 "build",
-                "-p", "always",
+                "-p", pristineMode,
                 "--sysbuild",
                 "-b", context.Board,
                 "-d", context.BuildDirectory,
@@ -175,6 +204,12 @@ public sealed class FirmwareBuildService
                 "--",
                 $"-Dapp_RETROPLC_GENERATED_DIR={context.GeneratedDirectory}"
             ]);
+
+    private static BuildProcess CreateCleanProcess(string projectDirectory) =>
+        CreatePlatformProcess(
+            "cmake",
+            ["-E", "remove_directory", Path.Combine(projectDirectory, "Build")],
+            projectDirectory);
 
     internal BuildProcess CreateFirmwareUpdateProcess(ZephyrBuildContext context)
     {
@@ -324,6 +359,7 @@ internal enum BuildStage
     StructuredText,
     Zephyr,
     FirmwareUpdate,
+    Clean,
     Complete
 }
 
