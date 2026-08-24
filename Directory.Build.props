@@ -1,0 +1,6 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<Project>
+  <PropertyGroup>
+    <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
+  </PropertyGroup>
+</Project>
