@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 namespace RetroPLC.LanguageServerHost;
 
 public sealed record StrucppPosition(int Line, int Character);

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 using Dock.Model.Mvvm.Controls;
 using RetroPLC.Shell.Controls;
 

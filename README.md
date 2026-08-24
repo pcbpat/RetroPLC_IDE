@@ -16,19 +16,25 @@ tools. Their generated executables are intentionally not stored in Git.
 
 ## Project motivation
 
-RetroPLC was programmed with the intention to have a cross-platform and open source alternative to Arduino PLC IDE for programming the Arduino Opta PLC. It widely differs to currently available solutions. To determine whether the project is suitable for you, see the following table comparing the available options to make a decision:
+RetroPLC was developed with the goal of providing a cross-platform, open-source alternative to the Arduino PLC IDE for developing PLC applications for the Arduino Opta. The design and implementation of its features are guided by the concepts described in PLCopen's [IEC 61131-3: a standard programming resource](https://www.plcopen.org/application/files/7117/3868/2055/intro_iec_oct2016.pdf). The project structure and programming workflow were designed around concepts defined by IEC 61131-3.
 
-| Feature | Arduino PLC IDE | OpenPLC Editor v4 | RetroPLC IDE |
-| --- | --- | --- | --- |
-| **Supported platforms** | Windows 10/11 (64-bit) | Windows, Linux, macOS (x64/ARM64) | Windows, Linux, macOS (64-bit) |
-| **Debugging** | Integrated Live Debug Mode, watch windows, breakpoints, step-by-step execution and oscilloscope | Live variable monitoring and forcing on bare-metal Arduino targets over the serial debug transport; the runtime uses Modbus RTU framing and the STruC++ debug table | Custom Zephyr `mcumgr` management group for live monitoring and forcing |
-| **Ecosystem / technology stack** | Closed-source Arduino PLC tooling integrated with the Arduino / Mbed ecosystem | Open source; TypeScript / Electron frontend, STruC++ compiler pipeline and the Arduino core/toolchain | Open source; C# / .NET with Avalonia; STruC++ compiler and language-server tooling |
-| **Look and feel** | Classic industrial engineering tool | Modern web-style desktop application (Electron) | Native desktop application with a classic / retro engineering-tool design |
-| **Supported IEC 61131-3 languages** | LD, FBD, ST, SFC, IL | LD, FBD, ST, SFC, IL | ST (currently) |
-| **Bootloader** | Arduino MCUboot on Opta | No OpenPLC-specific bootloader; uses the bootloader and upload mechanism provided by the selected Arduino board/core | Upstream Zephyr MCUboot |
-| **Build system** | Arduino toolchain / `arduino-cli` | STruC++ code generation followed by `arduino-cli` compile/link for Arduino targets | Zephyr `west` / CMake |
-| **Device management and flashing** | Arduino Opta DFU / PLC IDE manual-download workflow | Arduino core/package and board handling through `arduino-cli`; firmware upload through `arduino-cli upload` using the board-specific Arduino upload/DFU mechanism | Zephyr SMP via `mcumgrctl`; firmware upload and device management through `mcumgr` |
-| **Runtime** | Arduino / Mbed-based PLC runtime on the target | OpenPLC bare-metal Arduino runtime, compiled as an Arduino sketch/library and executed directly on the target | Zephyr-native PLC runtime |
+The project was motivated by the lack of existing open-source PLC development environments for the Arduino Opta that combine IEC 61131-3 programming with a Zephyr-native runtime, upstream MCUboot, and standard Zephyr device-management mechanisms.
+
+RetroPLC differs from currently available solutions in its architecture, runtime environment, debugging approach, and device-management workflow. To help determine which development environment best fits your use case, the following table compares RetroPLC with two other available solutions: Arduino PLC IDE and OpenPLC Editor.
+
+| Feature                             | Arduino PLC IDE                | OpenPLC Editor v4                 | RetroPLC IDE                         |
+| ----------------------------------- | ------------------------------ | -------------------------------   | ------------------------------------ |
+| **Supported platforms**             | Windows                        | Windows, Linux, macOS             | Windows, Linux, macOS                |
+| **License**                         | Closed source / Proprietary    | Open source / GPL-3.0             | Open source / GPL-3.0                |
+| **Debugging**                       | Live debug, watch, breakpoints | Monitoring & forcing via serial   | Monitoring & forcing via `mcumgrctl` |
+| **Ecosystem / technology stack**    | Closed-source                  | TypeScript / Electron, STruC++    | C# / Avalonia, STruC++               |
+| **Look and feel**                   | Classic engineering tool       | Modern web-style UI               | Classic engineering tool             |
+| **Supported IEC 61131-3 languages** | LD, FBD, ST, SFC, IL           | LD, FBD, ST, SFC, IL              | ST                                   |
+| **Bootloader**                      | Arduino MCUboot                | Arduino MCUboot                   | Upstream MCUboot                     |
+| **Build system**                    | `arduino-cli`                  | `arduino-cli`                     | `west` / CMake                       |
+| **Device management and flashing**  | `arduino-cli`                  | `arduino-cli`                     | `mcumgrctl` / SMP protocol           |
+| **Runtime**                         | Arduino / Mbed                 | Arduino / Mbed, STruC++ runtime   | Zephyr-native, STruC++ runtime       |
+
 
 ## Getting started
 
@@ -74,6 +80,13 @@ publish output by `RetroPLC.LanguageServerHost`.
 
 Run `./setup.sh` whenever the generated STruC++ tools are missing or need to be
 initially built.
+
+## License
+
+RetroPLC-authored code is licensed under the
+[GNU General Public License v3.0 or later](LICENSE.md)
+(`SPDX-License-Identifier: GPL-3.0-or-later`). Third-party components and
+assets remain under their respective licenses.
 
 ## Acknowledgements
 

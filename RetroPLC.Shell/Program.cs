@@ -1,4 +1,5 @@
-﻿using Avalonia;
+﻿// SPDX-License-Identifier: GPL-3.0-or-later
+using Avalonia;
 using System;
 
 namespace RetroPLC.Shell;
