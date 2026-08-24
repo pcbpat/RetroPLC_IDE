@@ -83,6 +83,17 @@ initially built.
   UI framework.
 - [Classic.Avalonia](https://github.com/BAndysc/Classic.Avalonia) — the classic
   Windows theme and controls for Avalonia.
+- [AvaloniaEdit](https://github.com/AvaloniaUI/AvaloniaEdit) and
+  [TextMateSharp](https://github.com/danipen/TextMateSharp) — the code editor
+  and TextMate-based syntax highlighting integration.
+- [CommunityToolkit.Mvvm](https://github.com/CommunityToolkit/dotnet) — MVVM
+  infrastructure and source generators.
+- [Dock](https://github.com/wieslawsoltes/Dock) — the docking layout framework.
+- [Iciclecreek.Avalonia.Terminal](https://github.com/tomlm/Iciclecreek.Avalonia.Terminal)
+  — the embedded terminal control.
+- [OmniSharp language protocol libraries](https://github.com/OmniSharp/csharp-language-server-protocol)
+  — the Language Server Protocol client implementation.
+- [Inter](https://github.com/rsms/inter) — the bundled application font.
 - [STruC++](https://github.com/Autonomy-Logic/STruCpp/tree/development) — the
   Structured Text CLI compiler, language server, and syntax resources.
 - [Zephyr](https://github.com/zephyrproject-rtos/zephyr) and
