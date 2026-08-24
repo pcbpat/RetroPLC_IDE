@@ -4,11 +4,14 @@
 set -euo pipefail
 
 readonly STRUCPP_COMMIT="80481d1c4c14c58da3a08f2fa00e7990f20a35ce"
+readonly MCUMGR_VERSION="0.16.0"
+readonly MCUMGR_REPOSITORY="https://github.com/Finomnis/mcumgr-toolkit"
+
 readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly STRUCPP_DIR="${SCRIPT_DIR}/external/STruCpp"
-readonly TOOLS_DIR="${SCRIPT_DIR}/RetroPLC.LanguageServerHost/Tools"
+readonly TOOLS_DIR="${SCRIPT_DIR}/Tools"
 
-for command in git node npm; do
+for command in git node npm curl; do
     if ! command -v "${command}" >/dev/null 2>&1; then
         echo "Required command not found: ${command}" >&2
         exit 1
@@ -34,6 +37,7 @@ fi
 platform="$(uname -s)"
 architecture="$(uname -m)"
 
+# STruC++ standalone executable target.
 case "${platform}:${architecture}" in
     Linux:x86_64|Linux:amd64)
         pkg_target="node22-linux-x64"
@@ -61,17 +65,61 @@ case "${platform}:${architecture}" in
         lsp_name="strucpp-lsp-win.exe"
         ;;
     *)
-        echo "Unsupported build platform: ${platform} ${architecture}" >&2
+        echo "Unsupported STruC++ build platform: ${platform} ${architecture}" >&2
+        exit 1
+        ;;
+esac
+
+# mcumgr-toolkit currently publishes these prebuilt mcumgrctl release assets.
+case "${platform}:${architecture}" in
+    Linux:x86_64|Linux:amd64)
+        mcumgr_asset="mcumgrctl-linux"
+        mcumgr_name="mcumgrctl"
+        ;;
+    Darwin:arm64|Darwin:aarch64)
+        mcumgr_asset="mcumgrctl-macos"
+        mcumgr_name="mcumgrctl"
+        ;;
+    MINGW*:x86_64|MSYS*:x86_64|CYGWIN*:x86_64)
+        mcumgr_asset="mcumgrctl-windows.exe"
+        mcumgr_name="mcumgrctl.exe"
+        ;;
+    *)
+        echo "No prebuilt mcumgrctl ${MCUMGR_VERSION} binary is published for ${platform} ${architecture}." >&2
         exit 1
         ;;
 esac
 
 compiler_dir="${TOOLS_DIR}/compiler"
 lsp_dir="${TOOLS_DIR}/lsp"
+mcumgr_dir="${TOOLS_DIR}/mcumgr"
+
 compiler_output="${compiler_dir}/${compiler_name}"
 lsp_output="${lsp_dir}/${lsp_name}"
+mcumgr_output="${mcumgr_dir}/${mcumgr_name}"
 
-mkdir -p "${compiler_dir}" "${lsp_dir}"
+mkdir -p "${compiler_dir}" "${lsp_dir}" "${mcumgr_dir}"
+
+mcumgr_url="${MCUMGR_REPOSITORY}/releases/download/${MCUMGR_VERSION}/${mcumgr_asset}"
+mcumgr_tmp="${mcumgr_output}.tmp"
+
+cleanup_mcumgr_download() {
+    rm -f "${mcumgr_tmp}"
+}
+trap cleanup_mcumgr_download EXIT
+
+echo "Downloading mcumgrctl ${MCUMGR_VERSION}..."
+rm -f "${mcumgr_tmp}"
+curl \
+    --fail \
+    --location \
+    --retry 3 \
+    --output "${mcumgr_tmp}" \
+    "${mcumgr_url}"
+
+mv "${mcumgr_tmp}" "${mcumgr_output}"
+chmod +x "${mcumgr_output}"
+trap - EXIT
 
 echo "Installing STruC++ dependencies and building the CLI bundle..."
 (
@@ -115,6 +163,7 @@ echo "Building ${lsp_name}..."
 
 chmod +x "${compiler_output}" "${lsp_output}"
 
-echo "STruC++ tools are ready:"
-echo "  ${compiler_output}"
-echo "  ${lsp_output}"
+echo "RetroPLC tools are ready:"
+echo "  Compiler:  ${compiler_output}"
+echo "  LSP:       ${lsp_output}"
+echo "  mcumgrctl: ${mcumgr_output}"
