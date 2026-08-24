@@ -109,6 +109,9 @@ assets remain under their respective licenses.
 - [Inter](https://github.com/rsms/inter) — the bundled application font.
 - [STruC++](https://github.com/Autonomy-Logic/STruCpp/tree/development) — the
   Structured Text CLI compiler, language server, and syntax resources.
-- [Zephyr](https://github.com/zephyrproject-rtos/zephyr) and
+- [Zephyr](https://github.com/zephyrproject-rtos/zephyr) - the embedded firmware
+  platform and real time operating system
   [mcumgr](https://github.com/apache/mynewt-mcumgr-cli) — the embedded firmware
-  platform and device-management tooling.
+  device-management tooling.
+- [mcumgrctl](https://github.com/Finomnis/mcumgr-toolkit/) - the command line tool to manage the running PLC
+via Simple Management Protocol (SMP) 
