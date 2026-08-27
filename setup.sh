@@ -586,15 +586,7 @@ heading 8 "Opta Zephyr modules + Python packages"
 
 (
     cd "${ZEPHYR_WORKSPACE_DIR}"
-    "${WEST}" update zephyr
-    "${WEST}" update \
-        cmsis_6 \
-        hal_stm32 \
-        hal_infineon \
-        mcuboot \
-        mbedtls \
-        tf-psa-crypto \
-        zcbor
+    "${WEST}" update
 )
 
 # Install the Python package set declared by this Zephyr workspace into the
