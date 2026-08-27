@@ -16,9 +16,9 @@ tools. Their generated executables are intentionally not stored in Git.
 
 ## Project motivation
 
-RetroPLC was developed with the goal of providing a cross-platform, open-source alternative to the Arduino PLC IDE for developing PLC applications for the Arduino Opta. The design and implementation of its features are guided by the concepts described in PLCopen's [IEC 61131-3: a standard programming resource](https://www.plcopen.org/application/files/7117/3868/2055/intro_iec_oct2016.pdf). The project structure and programming workflow were designed around concepts defined by IEC 61131-3.
+After working with PLCs for some time, I wanted to dive deeper into automation technology and better understand what happens under the hood. RetroPLC started as a project to understand and recreate the complete workflow of developing, deploying, monitoring, and debugging PLC applications.
 
-The project was motivated by the lack of existing open-source PLC development environments for the Arduino Opta that combine IEC 61131-3 programming with a Zephyr-native runtime, upstream MCUboot, and standard Zephyr device-management mechanisms.
+The main goal was to create a cross-platform, open-source alternative to the Arduino PLC IDE for developing PLC applications for the Arduino Opta. The design and implementation are guided by the concepts described in PLCopen's [IEC 61131-3: a standard programming resource](https://www.plcopen.org/application/files/7117/3868/2055/intro_iec_oct2016.pdf). The project structure and programming workflow follow concepts defined by IEC 61131-3.
 
 RetroPLC differs from currently available solutions in its architecture, runtime environment, debugging approach, and device-management workflow. To help determine which development environment best fits your use case, the following table compares RetroPLC with two other available solutions: Arduino PLC IDE and OpenPLC Editor.
 
