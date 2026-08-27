@@ -65,7 +65,7 @@ On Windows:
 .\setup.ps1
 ```
 
-The setup scripts install and configure the following:
+The setup scripts installs and configures following dependencies:
 
 - pinned RetroPLC development dependencies
 - Zephyr workspace and required Arduino Opta modules
