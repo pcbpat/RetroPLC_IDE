@@ -35,6 +35,13 @@ RetroPLC differs from currently available solutions in its architecture, runtime
 | **Device management and flashing**  | `arduino-cli`                  | `arduino-cli`                     | `mcumgrctl` / SMP protocol           |
 | **Runtime**                         | Arduino / Mbed                 | Arduino / Mbed, STruC++ runtime   | Zephyr-native, STruC++ runtime       |
 
+> [!CAUTION]
+> RetroPLC requires replacing the Arduino Opta's factory bootloader with upstream MCUboot.
+>
+> Flashing via Arduino IDE, Arduino PLC IDE, and OpenPLC Editor v4 is no longer possible unless the original bootloader is restored. Double-tapping the RESET button will also no longer enter the Arduino DFU mode.
+>
+> Firmware updates and device management are performed exclusively through the SMP protocol using mcumgr-compatible tools.
+> You are strongly advised to back up the factory Arduino Opta bootloader before flashing the upstream MCUboot bootloader. Prebuilt images of Arduino's Opta bootloader are available [here](https://github.com/arduino/ArduinoCore-mbed/tree/main/bootloaders/OPTA).
 
 ## Getting started
 
