@@ -68,9 +68,9 @@ On Windows:
 The setup scripts installs and configures following dependencies:
 
 - pinned RetroPLC development dependencies
-- Zephyr workspace and required Arduino Opta modules
+- RetroPLC Runtime manifest, Zephyr workspace, and required Arduino Opta modules
 - required Zephyr Python tooling, including `west`, CMake, and Ninja
-- required Zephyr SDK and ARM toolchain, if not already available on the system
+- private Zephyr SDK, DTC host tool, and ARM toolchain
 - pinned STruC++ compiler and language-server dependencies
 - `mcumgrctl` for firmware updates and device management
 
@@ -97,14 +97,23 @@ dotnet run --project RetroPLC.Shell/RetroPLC.Shell.csproj
 - `external/STruCpp` — STruC++ source submodule pinned to version 0.6.3.
 
 On Linux and macOS, the setup-managed runtimes, toolchains, STruC++ checkout,
-language server, compiler, Zephyr workspace, and `mcumgrctl` are installed under
-the solution-level `Tools` directory. The hosts resolve tools from that directory
-at runtime; generated dependencies are not copied into application build output.
+language server, compiler, RetroPLC Runtime checkout, Zephyr workspace, Zephyr
+SDK, DTC, ARM toolchain, and `mcumgrctl` are installed under the solution-level
+`Tools` directory. The hosts resolve tools from that directory at runtime;
+generated dependencies are not copied into application build output. A `.west`
+directory or Zephyr SDK outside `Tools` is not used by the IDE.
 
 ## Rebuilding dependencies
 
 Run `./setup.sh` whenever the generated STruC++ tools are missing or need to be
 initially built.
+
+Before the Runtime repository is public, maintainers with SSH access can test
+the complete setup using:
+
+```shell
+RETROPLC_RUNTIME_REPOSITORY=git@github.com:pcbpat/RetroPLC_Runtime.git ./setup.sh
+```
 
 ## License
 

@@ -260,6 +260,10 @@ public sealed class FirmwareBuildService
             "toolchain",
             "venv");
         var managedPath = Path.Combine(virtualEnvironment, "bin");
+        var zephyrSdk = Path.Combine(
+            StrucppToolchain.ToolsDirectory,
+            "toolchain",
+            "zephyr-sdk");
         var nodePath = Path.GetDirectoryName(StrucppToolchain.GetNodePath())!;
         var inheritedPath = Environment.GetEnvironmentVariable("PATH");
         var path = string.Join(
@@ -270,6 +274,7 @@ public sealed class FirmwareBuildService
         arguments.Insert(0, context.WestExecutable);
         arguments.Insert(0, $"PATH={path}");
         arguments.Insert(0, $"VIRTUAL_ENV={virtualEnvironment}");
+        arguments.Insert(0, $"ZEPHYR_SDK_INSTALL_DIR={zephyrSdk}");
         return new BuildProcess("/usr/bin/env", arguments, context.WorkspaceDirectory);
     }
 
@@ -305,7 +310,7 @@ public sealed class FirmwareBuildService
         var applicationDirectory = Environment.GetEnvironmentVariable(
             "RETROPLC_ZEPHYR_APPLICATION");
         if (string.IsNullOrWhiteSpace(applicationDirectory))
-            applicationDirectory = Path.Combine(workspaceDirectory, "retroplc-runtime", "app");
+            applicationDirectory = Path.Combine(workspaceDirectory, "RetroPLC_Runtime", "app");
         applicationDirectory = Path.GetFullPath(applicationDirectory);
         if (!Directory.Exists(applicationDirectory))
             throw new DirectoryNotFoundException(

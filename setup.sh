@@ -11,14 +11,13 @@
 #   - west, CMake and Ninja
 #   - pinned Zephyr workspace + west modules
 #   - Zephyr Python packages
-#   - Zephyr SDK arm-zephyr-eabi toolchain via west (reuse/install in user environment)
+#   - private Zephyr SDK with arm-zephyr-eabi toolchain and host tools
 #   - mcumgrctl
 #
 # Remaining host dependencies:
 #   - git
 #   - curl
 #   - tar
-#   - dtc (Device Tree Compiler)
 #   - basic POSIX shell utilities
 #
 # Windows should use setup.ps1 instead.
@@ -31,6 +30,9 @@ set -euo pipefail
 
 readonly STRUCPP_VERSION="0.6.3"
 readonly STRUCPP_REPOSITORY="https://github.com/Autonomy-Logic/STruCpp.git"
+
+readonly RETROPLC_RUNTIME_REVISION="${RETROPLC_RUNTIME_REVISION:-main}"
+readonly RETROPLC_RUNTIME_REPOSITORY="${RETROPLC_RUNTIME_REPOSITORY:-https://github.com/pcbpat/RetroPLC_Runtime.git}"
 
 readonly MCUMGR_VERSION="0.16.0"
 readonly MCUMGR_REPOSITORY="Finomnis/mcumgr-toolkit"
@@ -69,7 +71,9 @@ readonly NODE_DIR="${TOOLCHAIN_DIR}/node"
 readonly PYTHON_DIR="${TOOLCHAIN_DIR}/python"
 readonly PYTHON_VENV_DIR="${TOOLCHAIN_DIR}/venv"
 readonly ZEPHYR_WORKSPACE_DIR="${TOOLCHAIN_DIR}/zephyr-workspace"
+readonly RETROPLC_RUNTIME_DIR="${ZEPHYR_WORKSPACE_DIR}/RetroPLC_Runtime"
 readonly ZEPHYR_DIR="${ZEPHYR_WORKSPACE_DIR}/zephyr"
+readonly ZEPHYR_SDK_DIR="${TOOLCHAIN_DIR}/zephyr-sdk"
 
 readonly TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/retroplc-setup.XXXXXX")"
 
@@ -118,7 +122,7 @@ info() {
 
 heading 1 "Checking host dependencies"
 
-for command in git curl tar dtc awk sed head tr cp chmod mkdir mktemp rm; do
+for command in git curl tar find awk sed head tr cp chmod mkdir mktemp rm; do
     if ! command -v "${command}" >/dev/null 2>&1; then
         die "Required host command not found: ${command}"
     fi
@@ -179,6 +183,7 @@ case "${platform}:${architecture}" in
     Linux:x86_64|Linux:amd64)
         node_platform="linux-x64"
         python_target="x86_64-unknown-linux-gnu"
+        zephyr_sdk_platform="linux-x86_64"
         mcumgr_asset="mcumgrctl-linux"
         mcumgr_name="mcumgrctl"
         mcumgr_sha256="d2af9bd8843e108e7dbba43c03387c005e69f303d3cf9267aa5d2c796dcf7aeb"
@@ -186,6 +191,7 @@ case "${platform}:${architecture}" in
     Darwin:arm64|Darwin:aarch64)
         node_platform="darwin-arm64"
         python_target="aarch64-apple-darwin"
+        zephyr_sdk_platform="macos-aarch64"
         mcumgr_asset="mcumgrctl-macos"
         mcumgr_name="mcumgrctl"
         mcumgr_sha256="a9cbfb44cfc0852db8c2713b1255116db5524d02b912fe0ab98aa02e2dccff0"
@@ -381,34 +387,6 @@ python_full_version="$("${PYTHON_BIN}" -c 'import platform; print(platform.pytho
     die "Expected Python ${PYTHON_VERSION}, found ${python_full_version}."
 
 # -----------------------------------------------------------------------------
-# Validate DTC after private Python is available
-# -----------------------------------------------------------------------------
-
-dtc_version_raw="$(dtc --version 2>&1 || true)"
-dtc_version="$(
-    printf '%s\n' "${dtc_version_raw}" | \
-        sed -E 's/.*DTC[[:space:]]+([0-9]+(\.[0-9]+)+).*/\1/'
-)"
-
-if [[ -z "${dtc_version}" || "${dtc_version}" == "${dtc_version_raw}" ]]; then
-    die "Could not determine DTC version from: ${dtc_version_raw}"
-fi
-
-if ! "${PYTHON_BIN}" - "${dtc_version}" <<'PY'
-import sys
-
-def as_tuple(value: str):
-    return tuple(int(part) for part in value.split("."))
-
-actual = as_tuple(sys.argv[1])
-required = as_tuple("1.4.6")
-raise SystemExit(0 if actual >= required else 1)
-PY
-then
-    die "DTC 1.4.6 or newer is required (found ${dtc_version})."
-fi
-
-# -----------------------------------------------------------------------------
 # Private Python venv + west + CMake + Ninja
 # -----------------------------------------------------------------------------
 
@@ -560,12 +538,26 @@ if [[ "${mcumgr_is_current}" == false ]]; then
 fi
 
 # -----------------------------------------------------------------------------
-# Pinned Zephyr workspace
+# Managed RetroPLC Runtime + pinned Zephyr workspace
 # -----------------------------------------------------------------------------
 
-heading 7 "Zephyr ${ZEPHYR_REVISION}"
+heading 7 "RetroPLC Runtime ${RETROPLC_RUNTIME_REVISION} + Zephyr ${ZEPHYR_REVISION}"
 
 mkdir -p "${ZEPHYR_WORKSPACE_DIR}"
+
+if [[ ! -d "${RETROPLC_RUNTIME_DIR}/.git" ]]; then
+    rm -rf "${RETROPLC_RUNTIME_DIR}"
+    git clone --filter=blob:none --no-checkout \
+        "${RETROPLC_RUNTIME_REPOSITORY}" \
+        "${RETROPLC_RUNTIME_DIR}"
+else
+    git -C "${RETROPLC_RUNTIME_DIR}" remote set-url \
+        origin "${RETROPLC_RUNTIME_REPOSITORY}"
+fi
+
+git -C "${RETROPLC_RUNTIME_DIR}" fetch \
+    --depth 1 origin "${RETROPLC_RUNTIME_REVISION}"
+git -C "${RETROPLC_RUNTIME_DIR}" checkout --detach --force FETCH_HEAD
 
 if [[ ! -d "${ZEPHYR_DIR}/.git" ]]; then
     rm -rf "${ZEPHYR_DIR}"
@@ -580,7 +572,13 @@ git -C "${ZEPHYR_DIR}" checkout --detach --force FETCH_HEAD
 if [[ ! -d "${ZEPHYR_WORKSPACE_DIR}/.west" ]]; then
     (
         cd "${ZEPHYR_WORKSPACE_DIR}"
-        "${WEST}" init -l zephyr
+        "${WEST}" init -l RetroPLC_Runtime
+    )
+else
+    (
+        cd "${ZEPHYR_WORKSPACE_DIR}"
+        "${WEST}" config manifest.path RetroPLC_Runtime
+        "${WEST}" config manifest.file west.yml
     )
 fi
 
@@ -588,6 +586,7 @@ heading 8 "Opta Zephyr modules + Python packages"
 
 (
     cd "${ZEPHYR_WORKSPACE_DIR}"
+    "${WEST}" update zephyr
     "${WEST}" update \
         cmsis_6 \
         hal_stm32 \
@@ -606,7 +605,7 @@ heading 8 "Opta Zephyr modules + Python packages"
 )
 
 # -----------------------------------------------------------------------------
-# Zephyr SDK: reuse an existing matching installation or install for this user
+# Private Zephyr SDK
 # -----------------------------------------------------------------------------
 
 heading 9 "Zephyr SDK (arm-zephyr-eabi)"
@@ -615,14 +614,43 @@ sdk_expected_version="$(head -n 1 "${ZEPHYR_DIR}/SDK_VERSION" | tr -d '[:space:]
 [[ -n "${sdk_expected_version}" ]] || \
     die "Could not determine Zephyr SDK version from ${ZEPHYR_DIR}/SDK_VERSION."
 
-# Deliberately do not force an install directory. `west sdk install` may reuse
-# a matching SDK already registered for the user; otherwise it installs to the
-# normal per-user Zephyr SDK location and registers the CMake package.
-(
-    cd "${ZEPHYR_DIR}"
-    "${WEST}" sdk install \
-        --gnu-toolchains arm-zephyr-eabi
-)
+readonly ZEPHYR_SDK_ARCHIVE="zephyr-sdk-${sdk_expected_version}_${zephyr_sdk_platform}_minimal.tar.xz"
+readonly ZEPHYR_SDK_GCC="${ZEPHYR_SDK_DIR}/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
+
+sdk_is_current=false
+if [[ -f "${ZEPHYR_SDK_DIR}/sdk_version" ]] && \
+   [[ "$(head -n 1 "${ZEPHYR_SDK_DIR}/sdk_version" | tr -d '[:space:]')" == "${sdk_expected_version}" ]] && \
+   [[ -x "${ZEPHYR_SDK_GCC}" ]]; then
+    sdk_is_current=true
+fi
+
+if [[ "${sdk_is_current}" == false ]]; then
+    info "Installing private Zephyr SDK ${sdk_expected_version}"
+
+    zephyr_sdk_archive_path="${TMP_DIR}/${ZEPHYR_SDK_ARCHIVE}"
+    download_github_release_asset \
+        "zephyrproject-rtos/sdk-ng" \
+        "v${sdk_expected_version}" \
+        "${ZEPHYR_SDK_ARCHIVE}" \
+        "${zephyr_sdk_archive_path}"
+
+    rm -rf "${ZEPHYR_SDK_DIR}"
+    mkdir -p "${ZEPHYR_SDK_DIR}"
+    tar -xJf "${zephyr_sdk_archive_path}" \
+        -C "${ZEPHYR_SDK_DIR}" \
+        --strip-components=1
+
+    [[ -x "${ZEPHYR_SDK_DIR}/setup.sh" ]] || \
+        die "The Zephyr SDK setup executable was not installed."
+    "${ZEPHYR_SDK_DIR}/setup.sh" -t arm-zephyr-eabi -h
+fi
+
+[[ -x "${ZEPHYR_SDK_GCC}" ]] || \
+    die "The private Zephyr ARM toolchain was not installed."
+
+dtc_bin="$(find "${ZEPHYR_SDK_DIR}/hosttools" -type f -path '*/usr/bin/dtc' -print -quit)"
+[[ -x "${dtc_bin}" ]] || die "The private Zephyr SDK DTC executable was not installed."
+dtc_version="$("${dtc_bin}" --version 2>&1)"
 
 # -----------------------------------------------------------------------------
 # Final verification
@@ -639,11 +667,12 @@ echo "  DTC:            ${dtc_version}"
 echo "  STruC++:        ${STRUCPP_VERSION}"
 echo "  STruC++ CLI:    ${STRUCPP_COMPILER}"
 echo "  STruC++ LSP:    ${STRUCPP_SERVER}"
+echo "  Runtime:        $(git -C "${RETROPLC_RUNTIME_DIR}" rev-parse --short=12 HEAD)"
 echo "  Zephyr:         $(git -C "${ZEPHYR_DIR}" rev-parse --short=12 HEAD)"
 echo "  Zephyr SDK:     ${sdk_expected_version}"
 echo "  mcumgrctl:      ${MCUMGR_OUTPUT}"
 
 echo
-echo "System dependencies still required: git, curl, tar, dtc."
-echo "Node, npm, Python, west, CMake, Ninja and Zephyr are RetroPLC-managed; the Zephyr SDK is reused or installed per-user by west."
+echo "System dependencies still required: git, curl, tar."
+echo "Node, npm, Python, west, CMake, Ninja, DTC, Zephyr and the Zephyr SDK are RetroPLC-managed under Tools."
 success "RetroPLC setup completed successfully."
