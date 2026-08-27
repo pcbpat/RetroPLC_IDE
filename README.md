@@ -45,17 +45,34 @@ RetroPLC differs from currently available solutions in its architecture, runtime
 
 ## Getting started
 
-Clone the repository with its submodules, or initialize them after cloning:
+Clone the repository and initialize its submodules:
 
 ```shell
 git submodule update --init --recursive
 ```
 
-Build the pinned STruC++ 0.6.3 tools:
+Run the setup script for your platform.
+
+On Linux/macOS:
 
 ```shell
 ./setup.sh
 ```
+
+On Windows:
+
+```powershell
+.\setup.ps1
+```
+
+The setup scripts install and configure the following:
+
+- pinned RetroPLC development dependencies
+- Zephyr workspace and required Arduino Opta modules
+- required Zephyr Python tooling, including `west`, CMake, and Ninja
+- required Zephyr SDK and ARM toolchain, if not already available on the system
+- pinned STruC++ compiler and language-server dependencies
+- `mcumgrctl` for firmware updates and device management
 
 Restore and build the IDE:
 
