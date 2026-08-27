@@ -620,3 +620,7 @@ echo "  Zephyr:         $(git -C "${ZEPHYR_BASE}" rev-parse --short=12 HEAD)"
 echo "  Zephyr SDK:     ${sdk_expected_version}"
 echo "  ARM compiler:   ${ZEPHYR_SDK_DIR}/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
 echo "  mcumgrctl:      ${MCUMGR_OUTPUT}"
+
+echo
+echo "System dependencies still required: git, curl, tar, dtc."
+echo "Node, npm, Python, west, CMake, Ninja, Zephyr and the ARM SDK are not system dependencies."
