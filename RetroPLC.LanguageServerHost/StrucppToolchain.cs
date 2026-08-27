@@ -6,29 +6,46 @@ namespace RetroPLC.LanguageServerHost;
 
 public sealed record StrucppLibrarySummary(string FileName, string DisplayName);
 
+public sealed record StrucppToolCommand(
+    string ExecutablePath,
+    IReadOnlyList<string> PrefixArguments);
+
 public static class StrucppToolchain
 {
-    private const string ToolDirectoryName = "StrucppTools";
+    private const string ToolsDirectoryEnvironmentVariable = "RETROPLC_TOOLS_DIRECTORY";
+
+    private static readonly Lazy<string> ResolvedToolsDirectory = new(ResolveToolsDirectory);
+
+    public static string ToolsDirectory => ResolvedToolsDirectory.Value;
+
+    public static string StrucppDirectory => Path.Combine(ToolsDirectory, "strucpp");
 
     public static string CompilerDirectory =>
-        Path.Combine(AppContext.BaseDirectory, ToolDirectoryName, "compiler");
+        Path.Combine(StrucppDirectory, "dist", "node");
 
     public static string BundledLibraryDirectory =>
-        Path.Combine(CompilerDirectory, "libs");
+        Path.Combine(StrucppDirectory, "libs");
 
-    public static string GetCompilerPath() => Path.Combine(
-        CompilerDirectory,
-        OperatingSystem.IsWindows() ? "strucpp-win.exe" :
-        OperatingSystem.IsMacOS() ? "strucpp-macos" :
-        "strucpp-linux");
+    public static string GetNodePath() => OperatingSystem.IsWindows()
+        ? Path.Combine(ToolsDirectory, "toolchain", "node", "node.exe")
+        : Path.Combine(ToolsDirectory, "toolchain", "node", "bin", "node");
+
+    public static string GetCompilerPath() =>
+        Path.Combine(CompilerDirectory, "cli.js");
 
     public static string GetLanguageServerPath() => Path.Combine(
-        AppContext.BaseDirectory,
-        ToolDirectoryName,
-        "lsp",
-        OperatingSystem.IsWindows() ? "strucpp-lsp-win.exe" :
-        OperatingSystem.IsMacOS() ? "strucpp-lsp-macos" :
-        "strucpp-lsp-linux");
+        StrucppDirectory,
+        "vscode-extension",
+        "out",
+        "server",
+        "src",
+        "server.js");
+
+    public static StrucppToolCommand GetCompilerCommand() =>
+        CreateNodeCommand(GetCompilerPath(), "compiler");
+
+    public static StrucppToolCommand GetLanguageServerCommand() =>
+        CreateNodeCommand(GetLanguageServerPath(), "language server");
 
     public static string GetProjectLibraryDirectory(string projectDirectory) =>
         Path.Combine(projectDirectory, "Libraries");
@@ -81,6 +98,46 @@ public static class StrucppToolchain
             // Packaged tools normally retain their executable bit. The process
             // start error remains actionable if a read-only package did not.
         }
+    }
+
+    private static StrucppToolCommand CreateNodeCommand(string scriptPath, string toolName)
+    {
+        var nodePath = GetNodePath();
+        if (!File.Exists(nodePath))
+            throw new FileNotFoundException(
+                "The RetroPLC-managed Node.js runtime was not found. Run setup.sh first.",
+                nodePath);
+        if (!File.Exists(scriptPath))
+            throw new FileNotFoundException(
+                $"The STruC++ {toolName} was not found. Run setup.sh first.",
+                scriptPath);
+
+        EnsureExecutable(nodePath);
+        return new StrucppToolCommand(nodePath, [scriptPath]);
+    }
+
+    private static string ResolveToolsDirectory()
+    {
+        var configured = Environment.GetEnvironmentVariable(ToolsDirectoryEnvironmentVariable);
+        if (!string.IsNullOrWhiteSpace(configured))
+            return Path.GetFullPath(configured);
+
+        foreach (var startPath in new[] { AppContext.BaseDirectory, Environment.CurrentDirectory })
+        {
+            for (var directory = new DirectoryInfo(Path.GetFullPath(startPath));
+                 directory is not null;
+                 directory = directory.Parent)
+            {
+                var candidate = Path.Combine(directory.FullName, "Tools");
+                if (Directory.Exists(Path.Combine(candidate, "strucpp")) ||
+                    Directory.Exists(Path.Combine(candidate, "toolchain")))
+                {
+                    return candidate;
+                }
+            }
+        }
+
+        return Path.Combine(AppContext.BaseDirectory, "Tools");
     }
 
     private static IReadOnlyList<StrucppLibrarySummary> GetLibraries(string directory)

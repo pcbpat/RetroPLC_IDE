@@ -103,9 +103,8 @@ http-client.private.env.json
 [Ll]og/
 [Ll]ogs/
 
-# Generated STruC++ executables (build with ./setup.sh)
-RetroPLC.LanguageServerHost/Tools/compiler/strucpp-*
-RetroPLC.LanguageServerHost/Tools/lsp/strucpp-lsp-*
+# Toolchains and generated dependencies installed by setup.sh
+/Tools/
 
 # MSBuild Binary and Structured Log
 *.binlog

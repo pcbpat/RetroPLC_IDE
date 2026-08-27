@@ -96,9 +96,10 @@ dotnet run --project RetroPLC.Shell/RetroPLC.Shell.csproj
 - `RetroPLC.Theme` — shared Avalonia theme and controls.
 - `external/STruCpp` — STruC++ source submodule pinned to version 0.6.3.
 
-The generated STruC++ executables are written to the
-`RetroPLC.LanguageServerHost/Tools` directory and copied into application build and
-publish output by `RetroPLC.LanguageServerHost`.
+On Linux and macOS, the setup-managed runtimes, toolchains, STruC++ checkout,
+language server, compiler, Zephyr workspace, and `mcumgrctl` are installed under
+the solution-level `Tools` directory. The hosts resolve tools from that directory
+at runtime; generated dependencies are not copied into application build output.
 
 ## Rebuilding dependencies
 

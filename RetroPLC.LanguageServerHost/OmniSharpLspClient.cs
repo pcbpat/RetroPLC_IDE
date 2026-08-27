@@ -45,23 +45,17 @@ internal sealed class OmniSharpLspClient : IAsyncDisposable
     }
 
     public static async Task<OmniSharpLspClient> StartAsync(
-        string executablePath,
+        StrucppToolCommand command,
         string workingDirectory,
         Func<string, JsonNode?, CancellationToken, Task<JsonNode?>> requestHandler,
         Action<string, JsonNode?> notificationHandler,
         Action<string> errorHandler,
         CancellationToken cancellationToken)
     {
-        var fullPath = Path.GetFullPath(executablePath);
-        if (!File.Exists(fullPath))
-            throw new FileNotFoundException(
-                "The STruC++ language-server executable was not found.", fullPath);
-
         var projectDirectory = Path.GetFullPath(workingDirectory);
-        StrucppToolchain.EnsureExecutable(fullPath);
         var startInfo = new ProcessStartInfo
         {
-            FileName = fullPath,
+            FileName = command.ExecutablePath,
             WorkingDirectory = projectDirectory,
             UseShellExecute = false,
             CreateNoWindow = true,
@@ -69,6 +63,8 @@ internal sealed class OmniSharpLspClient : IAsyncDisposable
             RedirectStandardOutput = true,
             RedirectStandardError = true
         };
+        foreach (var argument in command.PrefixArguments)
+            startInfo.ArgumentList.Add(argument);
         startInfo.ArgumentList.Add("--stdio");
 
         var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };

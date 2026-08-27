@@ -157,11 +157,7 @@ public sealed class FirmwareBuildService
         string projectDirectory,
         string projectName)
     {
-        var compilerPath = StrucppToolchain.GetCompilerPath();
-        if (!File.Exists(compilerPath))
-            throw new FileNotFoundException(
-                "The STruC++ compiler executable was not found.", compilerPath);
-        StrucppToolchain.EnsureExecutable(compilerPath);
+        var compiler = StrucppToolchain.GetCompilerCommand();
 
         var sourceRoot = Path.Combine(projectDirectory, "ProjectFiles");
         var sourcePaths = Directory.Exists(sourceRoot)
@@ -178,16 +174,18 @@ public sealed class FirmwareBuildService
             "Generated",
             $"{MakeSafeFileName(projectName)}.cpp");
 
-        var arguments = new List<string>(sourcePaths)
-        {
+        var arguments = new List<string>(compiler.PrefixArguments);
+        arguments.AddRange(sourcePaths);
+        arguments.AddRange(
+        [
             "-o",
             outputPath,
             "--no-default-libs",
             "-L",
             "Libraries"
-        };
+        ]);
 
-        return CreatePlatformProcess(compilerPath, arguments, projectDirectory);
+        return CreatePlatformProcess(compiler.ExecutablePath, arguments, projectDirectory);
     }
 
     internal BuildProcess CreateZephyrBuildProcess(
@@ -206,11 +204,18 @@ public sealed class FirmwareBuildService
                 $"-Dapp_RETROPLC_GENERATED_DIR={context.GeneratedDirectory}"
             ]);
 
-    private static BuildProcess CreateCleanProcess(string projectDirectory) =>
-        CreatePlatformProcess(
-            "cmake",
+    private static BuildProcess CreateCleanProcess(string projectDirectory)
+    {
+        var cmake = GetManagedToolPath("cmake");
+        if (!File.Exists(cmake))
+            throw new FileNotFoundException(
+                "The RetroPLC-managed CMake executable was not found. Run setup.sh first.",
+                cmake);
+        return CreatePlatformProcess(
+            cmake,
             ["-E", "remove_directory", Path.Combine(projectDirectory, "Build")],
             projectDirectory);
+    }
 
     internal BuildProcess CreateFirmwareUpdateProcess(ZephyrBuildContext context)
     {
@@ -220,14 +225,14 @@ public sealed class FirmwareBuildService
                 "The firmware binary was not produced by the Zephyr build.",
                 firmwarePath);
 
-        if (!OperatingSystem.IsLinux())
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
             throw new PlatformNotSupportedException(
-                "The packaged mcumgrctl firmware updater currently supports Linux only.");
+                "The setup-managed mcumgrctl firmware updater supports Linux and macOS.");
 
         var executablePath = Path.Combine(
-            AppContext.BaseDirectory,
-            "BuildTools",
-            "mcumgrctl-linux");
+            StrucppToolchain.ToolsDirectory,
+            "mcumgr",
+            "mcumgrctl");
         if (!File.Exists(executablePath))
             throw new FileNotFoundException(
                 "The mcumgrctl firmware updater was not found.",
@@ -242,8 +247,31 @@ public sealed class FirmwareBuildService
 
     private static BuildProcess CreateWestProcess(
         ZephyrBuildContext context,
-        List<string> arguments) =>
-        CreatePlatformProcess(context.WestExecutable, arguments, context.WorkspaceDirectory);
+        List<string> arguments)
+    {
+        if (OperatingSystem.IsWindows())
+            return CreatePlatformProcess(
+                context.WestExecutable,
+                arguments,
+                context.WorkspaceDirectory);
+
+        var virtualEnvironment = Path.Combine(
+            StrucppToolchain.ToolsDirectory,
+            "toolchain",
+            "venv");
+        var managedPath = Path.Combine(virtualEnvironment, "bin");
+        var nodePath = Path.GetDirectoryName(StrucppToolchain.GetNodePath())!;
+        var inheritedPath = Environment.GetEnvironmentVariable("PATH");
+        var path = string.Join(
+            Path.PathSeparator,
+            new[] { managedPath, nodePath, inheritedPath }
+                .Where(value => !string.IsNullOrWhiteSpace(value)));
+
+        arguments.Insert(0, context.WestExecutable);
+        arguments.Insert(0, $"PATH={path}");
+        arguments.Insert(0, $"VIRTUAL_ENV={virtualEnvironment}");
+        return new BuildProcess("/usr/bin/env", arguments, context.WorkspaceDirectory);
+    }
 
     private static BuildProcess CreatePlatformProcess(
         string executable,
@@ -263,29 +291,36 @@ public sealed class FirmwareBuildService
         if (string.IsNullOrWhiteSpace(workspaceDirectory))
         {
             workspaceDirectory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                "Opta_Zephyr_Test",
-                "zephyrproject");
+                StrucppToolchain.ToolsDirectory,
+                "toolchain",
+                "zephyr-workspace");
         }
 
         workspaceDirectory = Path.GetFullPath(workspaceDirectory);
         if (!Directory.Exists(workspaceDirectory))
             throw new DirectoryNotFoundException(
                 $"The Zephyr workspace was not found at '{workspaceDirectory}'. " +
-                "Set RETROPLC_ZEPHYR_WORKSPACE to the T2 workspace directory.");
+                "Run setup.sh or set RETROPLC_ZEPHYR_WORKSPACE.");
 
-        var applicationDirectory = Path.Combine(workspaceDirectory, "retroplc-runtime", "app");
+        var applicationDirectory = Environment.GetEnvironmentVariable(
+            "RETROPLC_ZEPHYR_APPLICATION");
+        if (string.IsNullOrWhiteSpace(applicationDirectory))
+            applicationDirectory = Path.Combine(workspaceDirectory, "retroplc-runtime", "app");
+        applicationDirectory = Path.GetFullPath(applicationDirectory);
         if (!Directory.Exists(applicationDirectory))
             throw new DirectoryNotFoundException(
-                $"The RetroPLC Zephyr application was not found at '{applicationDirectory}'.");
+                $"The RetroPLC Zephyr application was not found at '{applicationDirectory}'. " +
+                "Set RETROPLC_ZEPHYR_APPLICATION to its app directory.");
 
         var configuredWest = Environment.GetEnvironmentVariable("RETROPLC_WEST_EXECUTABLE");
-        var bundledWest = OperatingSystem.IsWindows()
-            ? Path.Combine(workspaceDirectory, ".venv", "Scripts", "west.exe")
-            : Path.Combine(workspaceDirectory, ".venv", "bin", "west");
+        var bundledWest = GetManagedToolPath("west");
         var westExecutable = !string.IsNullOrWhiteSpace(configuredWest)
             ? configuredWest
-            : File.Exists(bundledWest) ? bundledWest : "west";
+            : bundledWest;
+        if (!File.Exists(westExecutable))
+            throw new FileNotFoundException(
+                "The RetroPLC-managed west executable was not found. Run setup.sh first.",
+                westExecutable);
 
         var board = Environment.GetEnvironmentVariable("RETROPLC_ZEPHYR_BOARD");
         if (string.IsNullOrWhiteSpace(board))
@@ -302,6 +337,13 @@ public sealed class FirmwareBuildService
             westExecutable,
             board);
     }
+
+    private static string GetManagedToolPath(string toolName) => Path.Combine(
+        StrucppToolchain.ToolsDirectory,
+        "toolchain",
+        "venv",
+        OperatingSystem.IsWindows() ? "Scripts" : "bin",
+        OperatingSystem.IsWindows() ? $"{toolName}.exe" : toolName);
 
     internal static void PublishBuildArtifacts(ZephyrBuildContext context)
     {

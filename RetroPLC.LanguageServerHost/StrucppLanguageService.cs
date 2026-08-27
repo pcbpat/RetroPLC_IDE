@@ -29,7 +29,7 @@ public sealed class StrucppLanguageService : IStrucppLanguageService
 
             _projectDirectory = Path.GetFullPath(projectDirectory);
             var client = await OmniSharpLspClient.StartAsync(
-                StrucppToolchain.GetLanguageServerPath(),
+                StrucppToolchain.GetLanguageServerCommand(),
                 _projectDirectory,
                 HandleServerRequestAsync,
                 HandleNotification,

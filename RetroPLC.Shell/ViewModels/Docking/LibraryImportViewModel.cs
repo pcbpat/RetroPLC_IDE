@@ -36,12 +36,9 @@ public sealed class LibraryImportViewModel : Tool
         if (File.Exists(outputPath))
             throw new IOException($"A project library named '{import.LibraryName}' already exists.");
 
-        var compilerPath = StrucppToolchain.GetCompilerPath();
-        if (!File.Exists(compilerPath))
-            throw new FileNotFoundException("The bundled STruCpp compiler was not found.", compilerPath);
-        StrucppToolchain.EnsureExecutable(compilerPath);
+        var compiler = StrucppToolchain.GetCompilerCommand();
 
-        var arguments = new List<string>
+        var arguments = new List<string>(compiler.PrefixArguments)
         {
             "--import-lib",
             import.SourcePath,
@@ -65,12 +62,12 @@ public sealed class LibraryImportViewModel : Tool
         string process;
         if (OperatingSystem.IsWindows())
         {
-            process = compilerPath;
+            process = compiler.ExecutablePath;
         }
         else
         {
             process = "/usr/bin/env";
-            arguments.Insert(0, compilerPath);
+            arguments.Insert(0, compiler.ExecutablePath);
         }
 
         var terminal = new ReadOnlyDockTerminalView

@@ -48,10 +48,10 @@ readonly WEST_VERSION="1.5.0"
 readonly CMAKE_VERSION="3.31.10"
 readonly NINJA_VERSION="1.13.0"
 
-# IMPORTANT: pin this to the Zephyr revision validated by RetroPLC.
-# v4.4.0 is a reproducible default. Replace it with the exact tested commit
-# before a RetroPLC release if the runtime depends on post-v4.4.0 changes.
-readonly ZEPHYR_REVISION="${ZEPHYR_REVISION:-v4.4.0}"
+# Exact Zephyr revision validated with the RetroPLC Opta runtime. The v4.4.0
+# tag predates an STM32H7 devicetree fix required by the runtime's two-bank
+# flash overlay and fails while configuring MCUboot.
+readonly ZEPHYR_REVISION="${ZEPHYR_REVISION:-da0718ca0d52d4f3e3653ead4f8d3a907778ae0b}"
 readonly ZEPHYR_REPOSITORY="https://github.com/zephyrproject-rtos/zephyr.git"
 
 # -----------------------------------------------------------------------------

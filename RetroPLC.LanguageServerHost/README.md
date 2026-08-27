@@ -5,20 +5,19 @@ This project owns the IDE-facing STruC++ integration:
 - `IStrucppLanguageService` is the typed boundary used by editor/view-model code.
 - `StrucppLanguageService` maps that API to LSP over stdio using OmniSharp's
   C# Language Server Protocol client.
-- `StrucppToolchain` resolves the packaged compiler, language server, and libraries.
-- `Tools/compiler/strucpp-*` is the generated STruC++ CLI used by Build and
-  library import.
-- `Tools/lsp/strucpp-lsp-*` is the generated standalone language-server
-  executable.
+- `StrucppToolchain` resolves the setup-managed Node runtime, compiler,
+  language server, and libraries from the solution-level `Tools` directory.
+- `Tools/strucpp/dist/node/cli.js` is the generated STruC++ CLI used by Build
+  and library import.
+- `Tools/strucpp/vscode-extension/out/server/src/server.js` is the generated
+  language server.
 
 Consumers should not construct JSON-RPC payloads or hard-code tool paths. They
 subscribe to `DiagnosticsPublished` and `ServerError`, and call the typed
 document, completion, formatting, and rename methods on
 `IStrucppLanguageService`.
 
-The tool content is copied transitively into a consuming application's
-`StrucppTools` output directory.
-
-The executables are not stored in Git. From the repository root, run
-`./setup.sh` to initialize the pinned STruC++ submodule and build both tools for
-the current platform. The build requires Node.js 22 or newer.
+The generated tools are not copied into application output. From the repository
+root, run `./setup.sh` to install the private Node runtime and build the pinned
+STruC++ tools under `Tools`. Set `RETROPLC_TOOLS_DIRECTORY` only when the tools
+directory is intentionally located outside the solution.

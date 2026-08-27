@@ -1,5 +1,6 @@
 ﻿// SPDX-License-Identifier: GPL-3.0-or-later
-﻿﻿using System.Collections.Generic;
+﻿﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -328,15 +329,23 @@ public partial class MainWindowViewModel : ViewModelBase
             _factory.SaveAllDocuments();
             action();
         }
-        catch
+        catch (Exception exception)
         {
-            OnBuildOperationExited(operation, -1);
+            var actionName = GetBuildOperationName(operation);
+            var result = $"{actionName} failed: {exception.Message}";
+            PlcStatus = _isOnline ? $"Online · {result}" : $"Offline · {result}";
         }
     }
 
     private void OnBuildOperationExited(BuildOperation operation, int exitCode)
     {
-        var action = operation switch
+        var action = GetBuildOperationName(operation);
+        var result = exitCode == 0 ? $"{action} succeeded" : $"{action} failed ({exitCode})";
+        PlcStatus = _isOnline ? $"Online · {result}" : $"Offline · {result}";
+    }
+
+    private static string GetBuildOperationName(BuildOperation operation) =>
+        operation switch
         {
             BuildOperation.Verify => "verification",
             BuildOperation.Build => "build",
@@ -345,9 +354,6 @@ public partial class MainWindowViewModel : ViewModelBase
             BuildOperation.Download => "download",
             _ => "operation"
         };
-        var result = exitCode == 0 ? $"{action} succeeded" : $"{action} failed ({exitCode})";
-        PlcStatus = _isOnline ? $"Online · {result}" : $"Offline · {result}";
-    }
 
     private void Download()
     {
