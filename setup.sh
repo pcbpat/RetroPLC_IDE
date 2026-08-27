@@ -11,18 +11,14 @@
 #   - west, CMake and Ninja
 #   - pinned Zephyr workspace + west modules
 #   - Zephyr Python packages
+#   - private Zephyr SDK with arm-zephyr-eabi + host tools
 #   - mcumgrctl
-#
-# Zephyr SDK:
-#   - installed/reused through `west sdk install`
-#   - may live in the user's normal Zephyr SDK location
 #
 # Remaining host dependencies:
 #   - git
 #   - curl
 #   - tar
 #   - dtc (Device Tree Compiler)
-#   - sha256sum (Linux) or shasum (macOS)
 #   - basic POSIX shell utilities
 #
 # Windows should use setup.ps1 instead.
@@ -36,17 +32,20 @@ set -euo pipefail
 readonly STRUCPP_VERSION="0.6.3"
 
 readonly MCUMGR_VERSION="0.16.0"
+readonly MCUMGR_REPOSITORY="Finomnis/mcumgr-toolkit"
 
 # STruC++ requires Node.js >= 22. RetroPLC uses one exact private runtime.
 readonly NODE_VERSION="22.23.2"
 
-# Exact python-build-standalone artifact validated for this RetroPLC toolchain.
-readonly PYTHON_VERSION="3.12.14"
+# python-build-standalone release. The script selects the Python 3.12.x asset
+# from this immutable release rather than depending on a system Python.
+readonly PYTHON_MAJOR_MINOR="3.12"
 readonly PYTHON_BUILD_RELEASE="20260825"
+readonly PYTHON_BUILD_REPOSITORY="astral-sh/python-build-standalone"
 
 readonly WEST_VERSION="1.5.0"
-readonly CMAKE_VERSION="3.31.10"
-readonly NINJA_VERSION="1.13.0"
+readonly CMAKE_VERSION="3.31.8"
+readonly NINJA_VERSION="1.12.1"
 
 # IMPORTANT: pin this to the Zephyr revision validated by RetroPLC.
 # v4.4.0 is a reproducible default. Replace it with the exact tested commit
@@ -69,60 +68,29 @@ readonly NODE_DIR="${TOOLCHAIN_DIR}/node"
 readonly PYTHON_DIR="${TOOLCHAIN_DIR}/python"
 readonly PYTHON_VENV_DIR="${TOOLCHAIN_DIR}/venv"
 readonly ZEPHYR_WORKSPACE_DIR="${TOOLCHAIN_DIR}/zephyr-workspace"
-readonly ZEPHYR_DIR="${ZEPHYR_WORKSPACE_DIR}/zephyr"
+readonly ZEPHYR_BASE="${ZEPHYR_WORKSPACE_DIR}/zephyr"
+readonly ZEPHYR_SDK_DIR="${TOOLCHAIN_DIR}/zephyr-sdk"
 
-# Keep setup-time state inside the cloned RetroPLC repository as well.
-# Setup-time caches stay inside the cloned repository.
-# The Zephyr SDK is the deliberate exception: `west sdk install` may reuse or
-# install/register an SDK in the user's normal Zephyr SDK/CMake locations.
-readonly SETUP_STATE_DIR="${TOOLS_DIR}/.setup-state"
-readonly SETUP_HOME_DIR="${SETUP_STATE_DIR}/home"
-readonly SETUP_CACHE_DIR="${SETUP_STATE_DIR}/cache"
-readonly SETUP_TMP_ROOT="${SETUP_STATE_DIR}/tmp"
-
-mkdir -p "${SETUP_HOME_DIR}" "${SETUP_CACHE_DIR}" "${SETUP_TMP_ROOT}"
-readonly TMP_DIR="$(mktemp -d "${SETUP_TMP_ROOT}/run.XXXXXX")"
+readonly TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/retroplc-setup.XXXXXX")"
 
 cleanup() {
-    rm -rf "${SETUP_STATE_DIR}"
+    rm -rf "${TMP_DIR}"
 }
 trap cleanup EXIT
 
-readonly TOTAL_STEPS=10
-
-if [[ -t 1 ]]; then
-    readonly COLOR_CYAN=$'\033[1;36m'
-    readonly COLOR_GREEN=$'\033[1;32m'
-    readonly COLOR_RED=$'\033[1;31m'
-    readonly COLOR_RESET=$'\033[0m'
-else
-    readonly COLOR_CYAN=''
-    readonly COLOR_GREEN=''
-    readonly COLOR_RED=''
-    readonly COLOR_RESET=''
-fi
-
-heading() {
-    local step="$1"
-    shift
-    printf '\n%s==== (%d/%d) [ %s ] ====%s\n' \
-        "${COLOR_CYAN}" "${step}" "${TOTAL_STEPS}" "$*" "${COLOR_RESET}"
-}
-
-success() {
-    printf '\n%s%s%s\n' "${COLOR_GREEN}" "$*" "${COLOR_RESET}"
-}
-
 die() {
-    printf '%sERROR: %s%s\n' "${COLOR_RED}" "$*" "${COLOR_RESET}" >&2
+    echo "ERROR: $*" >&2
     exit 1
+}
+
+info() {
+    echo
+    echo "==> $*"
 }
 
 # -----------------------------------------------------------------------------
 # Bootstrap dependencies
 # -----------------------------------------------------------------------------
-
-heading 1 "Checking host dependencies"
 
 for command in git curl tar dtc awk sed head tr cp chmod mkdir mktemp rm; do
     if ! command -v "${command}" >/dev/null 2>&1; then
@@ -184,30 +152,18 @@ architecture="$(uname -m)"
 case "${platform}:${architecture}" in
     Linux:x86_64|Linux:amd64)
         node_platform="linux-x64"
-
-        python_asset="cpython-${PYTHON_VERSION}+${PYTHON_BUILD_RELEASE}-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz"
-        python_url="https://github.com/astral-sh/python-build-standalone/releases/download/${PYTHON_BUILD_RELEASE}/cpython-${PYTHON_VERSION}%2B${PYTHON_BUILD_RELEASE}-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz"
-        python_sha256="7ce4a71285d913955a76053cc7605ea96da8ecada54dba9cf395245961816421"
-
+        python_target="x86_64-unknown-linux-gnu"
         mcumgr_asset="mcumgrctl-linux"
-        mcumgr_url="https://github.com/Finomnis/mcumgr-toolkit/releases/download/${MCUMGR_VERSION}/${mcumgr_asset}"
-        mcumgr_sha256="d2af9bd8843e108e7dbba43c03387c005e69f303d3cf9267aa5d2c796dcf7aeb"
         mcumgr_name="mcumgrctl"
         ;;
     Darwin:arm64|Darwin:aarch64)
         node_platform="darwin-arm64"
-
-        python_asset="cpython-${PYTHON_VERSION}+${PYTHON_BUILD_RELEASE}-aarch64-apple-darwin-install_only_stripped.tar.gz"
-        python_url="https://github.com/astral-sh/python-build-standalone/releases/download/${PYTHON_BUILD_RELEASE}/cpython-${PYTHON_VERSION}%2B${PYTHON_BUILD_RELEASE}-aarch64-apple-darwin-install_only_stripped.tar.gz"
-        python_sha256="8b0f1fa71eab7ca644e482c631807a1116fa848491051cd1c8d9429491de63a6"
-
+        python_target="aarch64-apple-darwin"
         mcumgr_asset="mcumgrctl-macos"
-        mcumgr_url="https://github.com/Finomnis/mcumgr-toolkit/releases/download/${MCUMGR_VERSION}/${mcumgr_asset}"
-        mcumgr_sha256="a9cbfb44cfc0852db8c2713b1255116db5524d02b912fe0ab98aa02e2dccff0"
         mcumgr_name="mcumgrctl"
         ;;
     Linux:aarch64|Linux:arm64)
-        die "Linux ARM64 is not enabled because mcumgr-toolkit ${MCUMGR_VERSION} has no matching prebuilt asset in the current RetroPLC setup."
+        die "Linux ARM64 is not enabled because mcumgr-toolkit ${MCUMGR_VERSION} has no matching prebuilt asset in the existing RetroPLC setup."
         ;;
     Darwin:x86_64|Darwin:amd64)
         die "Intel macOS is not enabled for the managed RetroPLC toolchain. Use Apple Silicon macOS."
@@ -226,8 +182,6 @@ mkdir -p "${TOOLS_DIR}" "${TOOLCHAIN_DIR}" "${MCUMGR_DIR}"
 # Private Node.js runtime
 # -----------------------------------------------------------------------------
 
-heading 2 "Node.js ${NODE_VERSION}"
-
 readonly NODE_ARCHIVE="node-v${NODE_VERSION}-${node_platform}.tar.gz"
 readonly NODE_URL="https://nodejs.org/dist/v${NODE_VERSION}/${NODE_ARCHIVE}"
 readonly NODE_SHASUMS_URL="https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt"
@@ -240,6 +194,8 @@ if [[ -x "${NODE_BIN}" ]] && \
 fi
 
 if [[ "${node_is_current}" == false ]]; then
+    info "Installing private Node.js ${NODE_VERSION}"
+
     node_archive_path="${TMP_DIR}/${NODE_ARCHIVE}"
     node_shasums_path="${TMP_DIR}/node-SHASUMS256.txt"
 
@@ -266,70 +222,152 @@ fi
     die "Unexpected private Node.js version: $("${NODE_BIN}" --version)"
 
 # -----------------------------------------------------------------------------
+# GitHub release helpers (using private Node for JSON parsing)
+# -----------------------------------------------------------------------------
+
+github_release_json() {
+    local repository="$1"
+    local tag="$2"
+    local output="$3"
+
+    curl \
+        --fail \
+        --location \
+        --retry 3 \
+        --retry-delay 1 \
+        --connect-timeout 30 \
+        --header "Accept: application/vnd.github+json" \
+        --header "User-Agent: RetroPLC-setup" \
+        --output "${output}" \
+        "https://api.github.com/repos/${repository}/releases/tags/${tag}"
+}
+
+github_asset_name_by_prefix_suffix() {
+    local release_json="$1"
+    local prefix="$2"
+    local suffix="$3"
+
+    "${NODE_BIN}" -e '
+const fs = require("fs");
+const release = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+const prefix = process.argv[2];
+const suffix = process.argv[3];
+const matches = release.assets.filter(
+  asset => asset.name.startsWith(prefix) && asset.name.endsWith(suffix)
+);
+if (matches.length !== 1) {
+  console.error(`Expected exactly one GitHub release asset matching ${prefix}*${suffix}; found ${matches.length}`);
+  process.exit(1);
+}
+process.stdout.write(matches[0].name);
+' "${release_json}" "${prefix}" "${suffix}"
+}
+
+download_github_release_asset() {
+    local repository="$1"
+    local tag="$2"
+    local asset_name="$3"
+    local output="$4"
+
+    local safe_repo="${repository//\//-}"
+    local release_json="${TMP_DIR}/${safe_repo}-${tag}.json"
+
+    github_release_json "${repository}" "${tag}" "${release_json}"
+
+    local metadata
+    metadata="$(
+        "${NODE_BIN}" -e '
+const fs = require("fs");
+const release = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+const name = process.argv[2];
+const asset = release.assets.find(candidate => candidate.name === name);
+if (!asset) {
+  console.error(`GitHub release asset not found: ${name}`);
+  process.exit(1);
+}
+const digest = typeof asset.digest === "string" ? asset.digest : "";
+process.stdout.write(`${asset.browser_download_url}|${digest}`);
+' "${release_json}" "${asset_name}"
+    )"
+
+    local asset_url="${metadata%%|*}"
+    local asset_digest="${metadata#*|}"
+
+    download "${asset_url}" "${output}"
+
+    if [[ "${asset_digest}" == sha256:* ]]; then
+        verify_sha256 "${output}" "${asset_digest#sha256:}"
+    else
+        echo "WARNING: GitHub did not provide a SHA-256 digest for ${asset_name}; downloaded asset could not be digest-verified." >&2
+    fi
+}
+
+# -----------------------------------------------------------------------------
 # Private CPython 3.12
 # -----------------------------------------------------------------------------
 
-heading 3 "Python ${PYTHON_VERSION}"
-
-readonly PYTHON_MARKER="${PYTHON_DIR}/.retroplc-python-version"
-readonly PYTHON_BIN="${PYTHON_DIR}/bin/python3"
+readonly PYTHON_RELEASE_JSON="${TMP_DIR}/python-build-standalone.json"
 
 python_is_current=false
-if [[ -x "${PYTHON_BIN}" ]] && \
-   [[ -f "${PYTHON_MARKER}" ]] && \
-   [[ "$(cat "${PYTHON_MARKER}")" == "${PYTHON_VERSION}+${PYTHON_BUILD_RELEASE}" ]] && \
-   [[ "$("${PYTHON_BIN}" --version 2>&1 || true)" == "Python ${PYTHON_VERSION}" ]]; then
-    python_is_current=true
+if [[ -x "${PYTHON_DIR}/bin/python3" ]] && \
+   [[ -f "${PYTHON_DIR}/.retroplc-python-build" ]] && \
+   [[ "$(cat "${PYTHON_DIR}/.retroplc-python-build")" == "${PYTHON_BUILD_RELEASE}" ]]; then
+    python_existing_version="$(
+        "${PYTHON_DIR}/bin/python3" -c \
+            'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' \
+            2>/dev/null || true
+    )"
+    if [[ "${python_existing_version}" == "${PYTHON_MAJOR_MINOR}" ]]; then
+        python_is_current=true
+    fi
 fi
 
 if [[ "${python_is_current}" == false ]]; then
+    info "Installing private Python ${PYTHON_MAJOR_MINOR}.x"
+
+    github_release_json \
+        "${PYTHON_BUILD_REPOSITORY}" \
+        "${PYTHON_BUILD_RELEASE}" \
+        "${PYTHON_RELEASE_JSON}"
+
+    python_asset="$(
+        github_asset_name_by_prefix_suffix \
+            "${PYTHON_RELEASE_JSON}" \
+            "cpython-${PYTHON_MAJOR_MINOR}." \
+            "+${PYTHON_BUILD_RELEASE}-${python_target}-install_only_stripped.tar.gz"
+    )"
+
     python_archive_path="${TMP_DIR}/${python_asset}"
 
-    download "${python_url}" "${python_archive_path}"
-    verify_sha256 "${python_archive_path}" "${python_sha256}"
+    download_github_release_asset \
+        "${PYTHON_BUILD_REPOSITORY}" \
+        "${PYTHON_BUILD_RELEASE}" \
+        "${python_asset}" \
+        "${python_archive_path}"
 
     rm -rf "${PYTHON_DIR}"
     mkdir -p "${PYTHON_DIR}"
     tar -xzf "${python_archive_path}" -C "${PYTHON_DIR}" --strip-components=1
 
-    printf '%s\n' "${PYTHON_VERSION}+${PYTHON_BUILD_RELEASE}" > "${PYTHON_MARKER}"
+    printf '%s\n' "${PYTHON_BUILD_RELEASE}" > "${PYTHON_DIR}/.retroplc-python-build"
 fi
 
+readonly PYTHON_BIN="${PYTHON_DIR}/bin/python3"
 [[ -x "${PYTHON_BIN}" ]] || die "Private Python executable was not installed."
 
+python_version="$(
+    "${PYTHON_BIN}" -c \
+        'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'
+)"
+
+[[ "${python_version}" == "${PYTHON_MAJOR_MINOR}" ]] || \
+    die "Expected Python ${PYTHON_MAJOR_MINOR}, found ${python_version}."
+
 python_full_version="$("${PYTHON_BIN}" --version 2>&1)"
-[[ "${python_full_version}" == "Python ${PYTHON_VERSION}" ]] || \
-    die "Expected Python ${PYTHON_VERSION}, found ${python_full_version}."
 
 # -----------------------------------------------------------------------------
-# Validate DTC
+# Validate DTC after private Python is available
 # -----------------------------------------------------------------------------
-
-version_at_least() {
-    local actual="$1"
-    local required="$2"
-
-    local a1=0 a2=0 a3=0
-    local r1=0 r2=0 r3=0
-
-    IFS=. read -r a1 a2 a3 <<< "${actual}"
-    IFS=. read -r r1 r2 r3 <<< "${required}"
-
-    a1="${a1:-0}"
-    a2="${a2:-0}"
-    a3="${a3:-0}"
-    r1="${r1:-0}"
-    r2="${r2:-0}"
-    r3="${r3:-0}"
-
-    (( 10#${a1} > 10#${r1} )) && return 0
-    (( 10#${a1} < 10#${r1} )) && return 1
-
-    (( 10#${a2} > 10#${r2} )) && return 0
-    (( 10#${a2} < 10#${r2} )) && return 1
-
-    (( 10#${a3} >= 10#${r3} ))
-}
 
 dtc_version_raw="$(dtc --version 2>&1 || true)"
 dtc_version="$(
@@ -341,16 +379,25 @@ if [[ -z "${dtc_version}" || "${dtc_version}" == "${dtc_version_raw}" ]]; then
     die "Could not determine DTC version from: ${dtc_version_raw}"
 fi
 
-version_at_least "${dtc_version}" "1.4.6" || \
+if ! "${PYTHON_BIN}" - "${dtc_version}" <<'PY'
+import sys
+
+def as_tuple(value: str):
+    return tuple(int(part) for part in value.split("."))
+
+actual = as_tuple(sys.argv[1])
+required = as_tuple("1.4.6")
+raise SystemExit(0 if actual >= required else 1)
+PY
+then
     die "DTC 1.4.6 or newer is required (found ${dtc_version})."
+fi
 
 # -----------------------------------------------------------------------------
 # Private Python venv + west + CMake + Ninja
 # -----------------------------------------------------------------------------
 
-heading 4 "west ${WEST_VERSION} + CMake ${CMAKE_VERSION} + Ninja ${NINJA_VERSION}"
-
-readonly VENV_MARKER_VALUE="${PYTHON_VERSION}+${PYTHON_BUILD_RELEASE}:${WEST_VERSION}:${CMAKE_VERSION}:${NINJA_VERSION}"
+readonly VENV_MARKER_VALUE="${PYTHON_BUILD_RELEASE}:${WEST_VERSION}:${CMAKE_VERSION}:${NINJA_VERSION}"
 readonly VENV_MARKER="${PYTHON_VENV_DIR}/.retroplc-toolchain-version"
 
 venv_recreate=false
@@ -361,12 +408,11 @@ if [[ ! -x "${PYTHON_VENV_DIR}/bin/python" ]] || \
 fi
 
 if [[ "${venv_recreate}" == true ]]; then
+    info "Creating private RetroPLC Python environment"
+
     rm -rf "${PYTHON_VENV_DIR}"
     "${PYTHON_BIN}" -m venv "${PYTHON_VENV_DIR}"
 
-    HOME="${SETUP_HOME_DIR}" \
-    XDG_CACHE_HOME="${SETUP_CACHE_DIR}" \
-    PIP_CACHE_DIR="${SETUP_CACHE_DIR}/pip" \
     "${PYTHON_VENV_DIR}/bin/python" -m pip install \
         --disable-pip-version-check \
         "west==${WEST_VERSION}" \
@@ -393,8 +439,6 @@ export PATH="${PYTHON_VENV_DIR}/bin:${PATH}"
 # Official STruC++ VSIX
 # -----------------------------------------------------------------------------
 
-heading 5 "STruC++ ${STRUCPP_VERSION}"
-
 readonly STRUCPP_MARKER="${STRUCPP_DIR}/.retroplc-strucpp-version"
 readonly STRUCPP_SERVER="${STRUCPP_DIR}/out/server.js"
 
@@ -406,15 +450,17 @@ if [[ -f "${STRUCPP_SERVER}" ]] && \
 fi
 
 if [[ "${strucpp_is_current}" == false ]]; then
-    strucpp_vsix_asset="strucpp-vscode-${STRUCPP_VERSION}.vsix"
-    strucpp_vsix_url="https://github.com/Autonomy-Logic/STruCpp/releases/download/v${STRUCPP_VERSION}/${strucpp_vsix_asset}"
-    strucpp_vsix_sha256="5ffcf308763a83602e4a16a67b1c1a55113a05cb3ab95ca2750cfc0fe1d6a6a5"
+    info "Installing STruC++ ${STRUCPP_VERSION} from the official VSIX"
 
+    strucpp_vsix_asset="strucpp-vscode-${STRUCPP_VERSION}.vsix"
     strucpp_vsix_path="${TMP_DIR}/${strucpp_vsix_asset}"
     strucpp_extract_dir="${TMP_DIR}/strucpp-vsix"
 
-    download "${strucpp_vsix_url}" "${strucpp_vsix_path}"
-    verify_sha256 "${strucpp_vsix_path}" "${strucpp_vsix_sha256}"
+    download_github_release_asset \
+        "Autonomy-Logic/STruCpp" \
+        "v${STRUCPP_VERSION}" \
+        "${strucpp_vsix_asset}" \
+        "${strucpp_vsix_path}"
 
     mkdir -p "${strucpp_extract_dir}"
 
@@ -447,8 +493,6 @@ fi
 # mcumgrctl
 # -----------------------------------------------------------------------------
 
-heading 6 "mcumgrctl ${MCUMGR_VERSION}"
-
 readonly MCUMGR_OUTPUT="${MCUMGR_DIR}/${mcumgr_name}"
 readonly MCUMGR_MARKER="${MCUMGR_DIR}/.retroplc-mcumgr-version"
 
@@ -460,10 +504,15 @@ if [[ -x "${MCUMGR_OUTPUT}" ]] && \
 fi
 
 if [[ "${mcumgr_is_current}" == false ]]; then
+    info "Installing mcumgrctl ${MCUMGR_VERSION}"
+
     mcumgr_tmp="${TMP_DIR}/${mcumgr_name}"
 
-    download "${mcumgr_url}" "${mcumgr_tmp}"
-    verify_sha256 "${mcumgr_tmp}" "${mcumgr_sha256}"
+    download_github_release_asset \
+        "${MCUMGR_REPOSITORY}" \
+        "${MCUMGR_VERSION}" \
+        "${mcumgr_asset}" \
+        "${mcumgr_tmp}"
 
     mkdir -p "${MCUMGR_DIR}"
     cp "${mcumgr_tmp}" "${MCUMGR_OUTPUT}"
@@ -475,19 +524,19 @@ fi
 # Pinned Zephyr workspace
 # -----------------------------------------------------------------------------
 
-heading 7 "Zephyr ${ZEPHYR_REVISION}"
+info "Preparing Zephyr ${ZEPHYR_REVISION}"
 
 mkdir -p "${ZEPHYR_WORKSPACE_DIR}"
 
-if [[ ! -d "${ZEPHYR_DIR}/.git" ]]; then
-    rm -rf "${ZEPHYR_DIR}"
-    git clone --filter=blob:none --no-checkout "${ZEPHYR_REPOSITORY}" "${ZEPHYR_DIR}"
+if [[ ! -d "${ZEPHYR_BASE}/.git" ]]; then
+    rm -rf "${ZEPHYR_BASE}"
+    git clone --filter=blob:none --no-checkout "${ZEPHYR_REPOSITORY}" "${ZEPHYR_BASE}"
 else
-    git -C "${ZEPHYR_DIR}" remote set-url origin "${ZEPHYR_REPOSITORY}"
+    git -C "${ZEPHYR_BASE}" remote set-url origin "${ZEPHYR_REPOSITORY}"
 fi
 
-git -C "${ZEPHYR_DIR}" fetch --depth 1 origin "${ZEPHYR_REVISION}"
-git -C "${ZEPHYR_DIR}" checkout --detach --force FETCH_HEAD
+git -C "${ZEPHYR_BASE}" fetch --depth 1 origin "${ZEPHYR_REVISION}"
+git -C "${ZEPHYR_BASE}" checkout --detach --force FETCH_HEAD
 
 if [[ ! -d "${ZEPHYR_WORKSPACE_DIR}/.west" ]]; then
     (
@@ -496,58 +545,68 @@ if [[ ! -d "${ZEPHYR_WORKSPACE_DIR}/.west" ]]; then
     )
 fi
 
-heading 8 "Opta Zephyr modules + Python packages"
-
-# Keep the workspace intentionally small for Arduino Opta:
-# STM32H747 + Infineon HAL retained for future connectivity, MCUboot/mcumgr,
-# and the crypto dependencies used by the firmware-update path.
 (
     cd "${ZEPHYR_WORKSPACE_DIR}"
-    "${WEST}" update \
-        cmsis_6 \
-        hal_stm32 \
-        hal_infineon \
-        mcuboot \
-        mbedtls \
-        tf-psa-crypto \
-        zcbor
+    "${WEST}" update
 )
 
 # Install the Python package set declared by this Zephyr workspace into the
 # RetroPLC-owned venv. No global Python packages are touched.
 (
     cd "${ZEPHYR_WORKSPACE_DIR}"
-
-    HOME="${SETUP_HOME_DIR}" \
-    XDG_CACHE_HOME="${SETUP_CACHE_DIR}" \
-    PIP_CACHE_DIR="${SETUP_CACHE_DIR}/pip" \
     "${WEST}" packages pip --install
 )
 
 # -----------------------------------------------------------------------------
-# Zephyr SDK: reuse an existing installation or install through west
+# Private Zephyr SDK: host tools + ARM GNU toolchain only
 # -----------------------------------------------------------------------------
 
-sdk_expected_version="$(head -n 1 "${ZEPHYR_DIR}/SDK_VERSION" | tr -d '[:space:]')"
+sdk_expected_version="$(head -n 1 "${ZEPHYR_BASE}/SDK_VERSION" | tr -d '[:space:]')"
 [[ -n "${sdk_expected_version}" ]] || \
-    die "Could not determine Zephyr SDK version from ${ZEPHYR_DIR}/SDK_VERSION."
+    die "Could not determine Zephyr SDK version from ${ZEPHYR_BASE}/SDK_VERSION."
 
-heading 9 "Zephyr SDK ${sdk_expected_version} (arm-zephyr-eabi)"
+sdk_is_current=false
+if [[ -f "${ZEPHYR_SDK_DIR}/sdk_version" ]] && \
+   [[ -x "${ZEPHYR_SDK_DIR}/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc" ]]; then
+    sdk_installed_version="$(
+        head -n 1 "${ZEPHYR_SDK_DIR}/sdk_version" | tr -d '[:space:]'
+    )"
+    if [[ "${sdk_installed_version}" == "${sdk_expected_version}" ]]; then
+        sdk_is_current=true
+    fi
+fi
 
-# Deliberately do not force --install-dir here:
-# - if the required SDK is already discoverable, west reuses it;
-# - otherwise west installs it in its normal user-level SDK location.
-(
-    cd "${ZEPHYR_DIR}"
-    "${WEST}" sdk install \
-        --gnu-toolchains arm-zephyr-eabi
-)
+if [[ "${sdk_is_current}" == false ]]; then
+    info "Installing private Zephyr SDK ${sdk_expected_version} (arm-zephyr-eabi only)"
+
+    rm -rf "${ZEPHYR_SDK_DIR}"
+
+    # Use a temporary HOME so west cannot silently reuse/register a user-global
+    # SDK. The resulting SDK itself is installed only below Tools/toolchain/.
+    sdk_temp_home="${TMP_DIR}/sdk-home"
+    mkdir -p "${sdk_temp_home}"
+
+    (
+        cd "${ZEPHYR_BASE}"
+
+        HOME="${sdk_temp_home}" \
+        ZEPHYR_BASE="${ZEPHYR_BASE}" \
+        ZEPHYR_SDK_INSTALL_DIR="" \
+        PATH="${PYTHON_VENV_DIR}/bin:${PATH}" \
+        "${WEST}" sdk install \
+            --install-dir "${ZEPHYR_SDK_DIR}" \
+            --gnu-toolchains arm-zephyr-eabi
+    )
+fi
+
+[[ -x "${ZEPHYR_SDK_DIR}/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc" ]] || \
+    die "Zephyr ARM toolchain was not installed at the expected location."
 
 # -----------------------------------------------------------------------------
 # Final verification
 # -----------------------------------------------------------------------------
 
-heading 10 "Verifying RetroPLC setup"
+info "RetroPLC toolchain is ready"
 
 echo "  Node:           $("${NODE_BIN}" --version)"
 echo "  Python:         ${python_full_version}"
@@ -557,15 +616,9 @@ echo "  Ninja:          $("${NINJA}" --version)"
 echo "  DTC:            ${dtc_version}"
 echo "  STruC++:        ${STRUCPP_VERSION}"
 echo "  STruC++ server: ${STRUCPP_SERVER}"
-echo "  Zephyr:         $(git -C "${ZEPHYR_DIR}" rev-parse --short=12 HEAD)"
+echo "  Zephyr:         $(git -C "${ZEPHYR_BASE}" rev-parse --short=12 HEAD)"
 echo "  Zephyr SDK:     ${sdk_expected_version}"
+echo "  ARM compiler:   ${ZEPHYR_SDK_DIR}/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
 echo "  mcumgrctl:      ${MCUMGR_OUTPUT}"
 
 echo
-echo "System dependencies still required: git, curl, tar, dtc, and sha256sum/shasum."
-echo "RetroPLC-managed Node, Python, west, CMake, Ninja, Zephyr sources, STruC++,"
-echo "and mcumgrctl live below:"
-echo "  ${TOOLS_DIR}"
-echo "The Zephyr SDK is reused or installed by west in its normal user-level location."
-
-success "==== [ RetroPLC setup complete ] ===="
