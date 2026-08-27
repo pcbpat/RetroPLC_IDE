@@ -1,0 +1,9 @@
+CONFIGURATION Configuration1
+  VAR_GLOBAL
+    gSystemRunning : BOOL := FALSE;
+  END_VAR
+  RESOURCE PLC_CPU ON PLC
+    TASK MainTask(INTERVAL := T#20ms, PRIORITY := 1);
+    PROGRAM MainInst WITH MainTask : Main;
+  END_RESOURCE
+END_CONFIGURATION

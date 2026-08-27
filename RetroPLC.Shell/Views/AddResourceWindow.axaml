@@ -1,0 +1,78 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:common="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia"
+        xmlns:icons="using:RetroPLC.Icons"
+        x:Class="RetroPLC.Shell.Views.AddResourceWindow"
+        Title="Add Resource"
+        Icon="avares://RetroPLC.Icons/Win98SE/SE98/apps/32/codeblocks.png"
+        Width="440"
+        Height="280"
+        MinWidth="420"
+        MinHeight="260"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Styles>
+        <Style Selector="TextBox">
+            <Setter Property="CaretBrush"
+                    Value="{DynamicResource {x:Static common:SystemColors.WindowTextBrushKey}}" />
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="Auto,1,*,Auto">
+        <Grid Grid.Row="0" Margin="18,15" ColumnDefinitions="42,*">
+            <Image Width="32" Height="32"
+                   VerticalAlignment="Center"
+                   RenderOptions.BitmapInterpolationMode="None"
+                   Source="{x:Static icons:Se98Icons+Devices+Size32.Computer}" />
+            <StackPanel Grid.Column="1"
+                        Margin="8,0,0,0"
+                        VerticalAlignment="Center">
+                <TextBlock Text="Create a new IEC 61131-3 Resource" />
+                <TextBlock Opacity="0.72"
+                           Text="A RESOURCE runs on a processor and owns TASKs and PROGRAM instances." />
+            </StackPanel>
+        </Grid>
+
+        <Border Grid.Row="1"
+                Background="{DynamicResource {x:Static common:SystemColors.ControlDarkBrushKey}}" />
+
+        <Grid Grid.Row="2" Margin="18,14" RowDefinitions="Auto,Auto,Auto" RowSpacing="9">
+            <Grid ColumnDefinitions="90,*">
+                <TextBlock VerticalAlignment="Center" Text="Name:" />
+                <TextBox x:Name="NameBox"
+                         Grid.Column="1"
+                         Text="Resource"
+                         TextChanged="NameBox_OnTextChanged" />
+            </Grid>
+            <Grid Grid.Row="1" ColumnDefinitions="90,*">
+                <TextBlock VerticalAlignment="Center" Text="Processor:" />
+                <TextBox x:Name="ProcessorBox"
+                         Grid.Column="1"
+                         Text="PLC"
+                         TextChanged="NameBox_OnTextChanged" />
+            </Grid>
+            <TextBlock Grid.Row="2"
+                       Opacity="0.72"
+                       Text="The processor identifies the target platform, e.g. PLC or a controller name."
+                       TextWrapping="Wrap" />
+        </Grid>
+
+        <Border Grid.Row="3"
+                Padding="12,10"
+                BorderBrush="{DynamicResource {x:Static common:SystemColors.ControlDarkBrushKey}}"
+                BorderThickness="0,1,0,0">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock x:Name="ValidationText"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource {x:Static common:SystemColors.HotTrackBrushKey}}" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Button x:Name="AddButton" Width="82" Content="Add" IsDefault="True" Click="Add_OnClick" />
+                    <Button Width="82" Content="Cancel" IsCancel="True" Click="Cancel_OnClick" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

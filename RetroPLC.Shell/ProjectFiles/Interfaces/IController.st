@@ -1,0 +1,6 @@
+INTERFACE IController
+    METHOD Initialize
+    END_METHOD
+    METHOD Shutdown
+    END_METHOD
+END_INTERFACE
