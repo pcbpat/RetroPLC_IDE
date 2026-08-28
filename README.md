@@ -1,5 +1,7 @@
 # RetroPLC IDE
 
+https://github.com/user-attachments/assets/962fade2-2978-4fd7-b382-b99ae306dd80
+
 RetroPLC IDE is a cross-platform Structured Text development environment built
 with .NET and Avalonia. It integrates the STruC++ compiler and language server
 for editing and building IEC 61131-3 projects.
