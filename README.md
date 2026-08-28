@@ -10,7 +10,6 @@ for editing and building IEC 61131-3 projects.
 
 - .NET 10 SDK
 - Git
-- Node.js 22 or newer and npm
 - A supported 64-bit Linux, macOS, or Windows environment
 
 Node.js is needed only to build the STruC++ command-line and language-server
