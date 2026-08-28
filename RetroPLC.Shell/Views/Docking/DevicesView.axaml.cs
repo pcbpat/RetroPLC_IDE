@@ -50,11 +50,6 @@ public partial class DevicesView : UserControl
         {
             viewModel.TryOpenNode(node);
         }
-
-        // TreeViewItem normally expands its children when its header receives
-        // this event. The header opens the source instead; only the separate
-        // expander toggle may change IsExpanded.
-        e.Handled = true;
     }
 
     private async void ContextMenu_OnOpening(object? sender, System.ComponentModel.CancelEventArgs e)

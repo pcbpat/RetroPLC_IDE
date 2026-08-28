@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -87,8 +86,6 @@ public sealed class DocumentViewModel : Document
 
     public TextDocument Document { get; }
 
-    public ObservableCollection<StrucppDiagnostic> Diagnostics { get; } = [];
-
     public int Version => _version;
 
     public bool IsDirty => _isDirty;
@@ -100,13 +97,6 @@ public sealed class DocumentViewModel : Document
         _savedText = text;
         UpdateDirtyState();
         Saved?.Invoke(this, text);
-    }
-
-    public void SetDiagnostics(IReadOnlyList<StrucppDiagnostic> diagnostics)
-    {
-        Diagnostics.Clear();
-        foreach (var diagnostic in diagnostics)
-            Diagnostics.Add(diagnostic);
     }
 
     public Task<IReadOnlyList<StrucppCompletionItem>> GetCompletionsAsync(

@@ -2,13 +2,12 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:RetroPLC.Shell.ViewModels.Docking"
-             xmlns:strucpp="using:RetroPLC.LanguageServerHost"
              xmlns:icons="using:RetroPLC.Icons"
              xmlns:edit="clr-namespace:AvaloniaEdit;assembly=AvaloniaEdit"
              xmlns:commonControls="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia"
              x:Class="RetroPLC.Shell.Views.Docking.DocumentView"
              x:DataType="vm:DocumentViewModel">
-    <Grid RowDefinitions="Auto,*,Auto" Focusable="True">
+    <Grid RowDefinitions="Auto,*" Focusable="True">
         <ClassicBorderDecorator Grid.Row="0"
                                 BorderStyle="ThinRaised"
                                 BorderThickness="1">
@@ -75,19 +74,5 @@
             </edit:TextEditor.ContextMenu>
         </edit:TextEditor>
 
-        <ScrollViewer Grid.Row="2"
-                      MaxHeight="110"
-                      HorizontalScrollBarVisibility="Disabled"
-                      VerticalScrollBarVisibility="Auto">
-            <ItemsControl ItemsSource="{Binding Diagnostics}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="strucpp:StrucppDiagnostic">
-                        <TextBlock Margin="4,2"
-                                   Text="{Binding DisplayText}"
-                                   TextWrapping="Wrap" />
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </ScrollViewer>
     </Grid>
 </UserControl>

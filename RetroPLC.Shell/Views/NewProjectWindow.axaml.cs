@@ -12,10 +12,6 @@ public partial class NewProjectWindow : Window
 {
     private static readonly Dictionary<string, string> Descriptions = new()
     {
-        ["StandardLibrary"] = "A reusable IEC 61131-3 library with the standard project structure.",
-        ["EmptyLibrary"] = "An empty library ready for functions, function blocks, and data types.",
-        ["ExternalLibrary"] = "A library project that links to externally maintained implementation files.",
-        ["StandardProject"] = "A complete PLC project with a program, device configuration, and task.",
         ["EmptyProject"] = "An empty PLC project with no predefined program objects."
     };
 
@@ -27,31 +23,12 @@ public partial class NewProjectWindow : Window
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
             "RetroPLC");
 
-        if (CategoryTree.Items[0] is TreeViewItem libraries)
-            libraries.IsSelected = true;
+        if (CategoryTree.Items[0] is TreeViewItem projects)
+            projects.IsSelected = true;
+        TemplateList.SelectedItem = FindTemplate("EmptyProject");
     }
 
     public NewProjectResult? Result { get; private set; }
-
-    private void CategoryTree_OnSelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        if (CategoryTree.SelectedItem is not TreeViewItem category)
-            return;
-
-        var showLibraries = Equals(category.Tag, "Libraries");
-        foreach (var item in TemplateList.Items)
-        {
-            if (item is not ListBoxItem template)
-                continue;
-
-            var isLibrary = template.Tag?.ToString()?.EndsWith("Library", StringComparison.Ordinal) == true;
-            template.IsVisible = isLibrary == showLibraries;
-        }
-
-        TemplateList.SelectedItem = showLibraries
-            ? FindTemplate("StandardLibrary")
-            : FindTemplate("StandardProject");
-    }
 
     private ListBoxItem? FindTemplate(string tag)
     {
@@ -70,7 +47,7 @@ public partial class NewProjectWindow : Window
             return;
 
         DescriptionText.Text = Descriptions[key];
-        ProjectNameBox.Text = key.EndsWith("Library", StringComparison.Ordinal) ? "Library1" : "Project1";
+        ProjectNameBox.Text = "Project1";
     }
 
     private async void Browse_OnClick(object? sender, RoutedEventArgs e)

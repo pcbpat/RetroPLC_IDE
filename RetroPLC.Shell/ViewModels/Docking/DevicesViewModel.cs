@@ -68,38 +68,22 @@ public sealed class DevicesViewModel : Tool
     [
         new(projectName, DeviceIcons.Application,
         [
-            new("Data Types", DeviceIcons.DataTypes, [], false),
+            new("Data Types", DeviceIcons.DataTypes,
+            [
+                new("Structures", DeviceIcons.Folder),
+                new("Enumerations", DeviceIcons.Folder),
+                new("Aliases and Subranges", DeviceIcons.Folder),
+                new("Arrays", DeviceIcons.Folder)
+            ]),
             new("POUs", DeviceIcons.Pous,
             [
-                new("Programs", DeviceIcons.Folder,
-                [
-                    new("Main", DeviceIcons.Program,
-                        filePath: "ProjectFiles/POUs/Programs/Main.st"),
-                    new("Blink", DeviceIcons.Program,
-                        filePath: "ProjectFiles/POUs/Programs/Blink.st")
-                ], false),
-                new("Function Blocks", DeviceIcons.Folder,
-                [
-                    new("MotorController", DeviceIcons.Program,
-                        filePath: "ProjectFiles/POUs/FunctionBlocks/MotorController.st")
-                ], false),
-                new("Functions", DeviceIcons.Folder,
-                [
-                    new("Scale", DeviceIcons.Program,
-                        filePath: "ProjectFiles/POUs/Functions/Scale.st")
-                ], false)
+                new("Programs", DeviceIcons.Folder),
+                new("Function Blocks", DeviceIcons.Folder),
+                new("Functions", DeviceIcons.Folder)
             ]),
-            new("Interfaces", DeviceIcons.Folder,
-            [
-                new("IMotor", DeviceIcons.Program,
-                    filePath: "ProjectFiles/Interfaces/IMotor.st"),
-                new("IController", DeviceIcons.Program,
-                    filePath: "ProjectFiles/Interfaces/IController.st")
-            ], false),
-            new("Configurations", DeviceIcons.Controller, [], true),
-            new("Libraries", DeviceIcons.Library,
-                CreateLibraryNodes(), false),
-            new("Tests", DeviceIcons.Task, [], false)
+            new("Interfaces", DeviceIcons.Folder),
+            new("Configurations", DeviceIcons.Controller),
+            new("Tests", DeviceIcons.Task)
         ])
     ];
 
@@ -513,14 +497,6 @@ public sealed class DevicesViewModel : Tool
             cancellationToken);
     }
 
-    private static IReadOnlyList<DeviceTreeNode> CreateLibraryNodes() =>
-        StrucppToolchain.GetBundledLibraries()
-            .Select(library => new DeviceTreeNode(
-                $"{library.DisplayName} ({Path.GetFileNameWithoutExtension(library.FileName)})",
-                DeviceIcons.Library,
-                libraryFileName: library.FileName))
-            .ToList();
-
     private DeviceTreeNode CreateProjectRootNode(
         ProjectNodeDefinition definition,
         string projectDirectory)
@@ -547,12 +523,13 @@ public sealed class DevicesViewModel : Tool
             kind: definition.Kind);
     }
 
-    private static DeviceTreeNode CreateBuildOutputNode(string projectDirectory)
+    private static DeviceTreeNode? CreateBuildOutputNode(string projectDirectory)
     {
         var buildDirectory = Path.Combine(projectDirectory, "Build");
-        var children = Directory.Exists(buildDirectory)
-            ? CreateBuildFileSystemNodes(buildDirectory, projectDirectory)
-            : [];
+        if (!Directory.Exists(buildDirectory))
+            return null;
+
+        var children = CreateBuildFileSystemNodes(buildDirectory, projectDirectory);
         return new DeviceTreeNode(
             "Build",
             DeviceIcons.Folder,
@@ -751,20 +728,21 @@ public sealed class DevicesViewModel : Tool
         if (root is null)
             return;
 
-        var libraries = root.Children.FirstOrDefault(node => node.Name == "Libraries")
-                        ?? new ProjectNodeDefinition { Name = "Libraries", Icon = "library", IsExpanded = false };
+        var projectLibraries = StrucppToolchain.GetProjectLibraries(projectDirectory);
+        var libraries = root.Children.FirstOrDefault(node => node.Name == "Libraries");
+        if (projectLibraries.Count == 0 && libraries is null)
+            return;
+
+        libraries ??= new ProjectNodeDefinition { Name = "Libraries", Icon = "library" };
         if (!root.Children.Contains(libraries))
-        {
             root.Children.Add(libraries);
-        }
 
         libraries.Icon = "library";
-        libraries.Children = StrucppToolchain.GetProjectLibraries(projectDirectory)
+        libraries.Children = projectLibraries
             .Select(library => new ProjectNodeDefinition
             {
                 Name = $"{library.DisplayName} ({Path.GetFileNameWithoutExtension(library.FileName)})",
                 Icon = "library",
-                IsExpanded = true,
                 LibraryFileName = library.FileName
             })
             .ToList();
@@ -805,8 +783,7 @@ public sealed class DevicesViewModel : Tool
                 FilePath = relativePath,
                 Kind = IsConfigurationPath(relativePath)
                     ? ProjectNodeKinds.Configuration
-                    : null,
-                IsExpanded = true
+                    : null
             });
             category.Children = category.Children
                 .OrderBy(node => node.Name, StringComparer.OrdinalIgnoreCase)
@@ -944,7 +921,7 @@ public sealed class DeviceTreeNode(
     string name,
     IImage icon,
     IReadOnlyList<DeviceTreeNode>? children = null,
-    bool isExpanded = true,
+    bool isExpanded = false,
     string? filePath = null,
     string? libraryFileName = null,
     StrucppLocation? location = null,

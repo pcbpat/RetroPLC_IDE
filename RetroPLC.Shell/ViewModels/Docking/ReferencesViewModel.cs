@@ -19,10 +19,7 @@ public sealed class ReferencesViewModel(Action<StrucppLocation> navigate) : Tool
         IReadOnlyList<StrucppLocation> locations)
     {
         var projectNode = new ReferenceTreeNode(
-            $"{projectName} ({locations.Count} reference{(locations.Count == 1 ? string.Empty : "s")})")
-        {
-            IsExpanded = true
-        };
+            $"{projectName} ({locations.Count} reference{(locations.Count == 1 ? string.Empty : "s")})");
 
         foreach (var fileGroup in locations
                      .GroupBy(
@@ -31,7 +28,7 @@ public sealed class ReferencesViewModel(Action<StrucppLocation> navigate) : Tool
                      .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase))
         {
             var relativePath = Path.GetRelativePath(projectDirectory, fileGroup.Key);
-            var fileNode = new ReferenceTreeNode(relativePath) { IsExpanded = true };
+            var fileNode = new ReferenceTreeNode(relativePath);
             foreach (var location in fileGroup
                          .OrderBy(item => item.Range.Start.Line)
                          .ThenBy(item => item.Range.Start.Character))

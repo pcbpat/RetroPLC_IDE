@@ -27,7 +27,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private bool _isRunning;
     private bool _isProjectOpen;
     private bool _isLoadingProject;
-    private string _plcStatus = "Offline";
+    private string _plcStatus = string.Empty;
 
     public IRootDock? Layout
     {
@@ -252,7 +252,6 @@ public partial class MainWindowViewModel : ViewModelBase
     private void GoOnline()
     {
         _isOnline = true;
-        PlcStatus = "Online · not logged in";
         RefreshPlcCommands();
     }
 
@@ -261,14 +260,12 @@ public partial class MainWindowViewModel : ViewModelBase
         _isRunning = false;
         _isLoggedIn = false;
         _isOnline = false;
-        PlcStatus = "Offline";
         RefreshPlcCommands();
     }
 
     private void Login()
     {
         _isLoggedIn = true;
-        PlcStatus = "Online · STOP";
         RefreshPlcCommands();
     }
 
@@ -276,28 +273,24 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         _isRunning = false;
         _isLoggedIn = false;
-        PlcStatus = "Online · not logged in";
         RefreshPlcCommands();
     }
 
     private void Run()
     {
         _isRunning = true;
-        PlcStatus = "Online · RUN";
         RefreshPlcCommands();
     }
 
     private void Stop()
     {
         _isRunning = false;
-        PlcStatus = "Online · STOP";
         RefreshPlcCommands();
     }
 
     private void ResetPlc()
     {
         _isRunning = false;
-        PlcStatus = "Online · reset complete · STOP";
         RefreshPlcCommands();
     }
 
@@ -323,7 +316,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private void StartBuildOperation(BuildOperation operation, string status, System.Action action)
     {
-        PlcStatus = _isOnline ? $"Online · {status}" : $"Offline · {status}";
+        PlcStatus = status;
         try
         {
             _factory.SaveAllDocuments();
@@ -333,7 +326,7 @@ public partial class MainWindowViewModel : ViewModelBase
         {
             var actionName = GetBuildOperationName(operation);
             var result = $"{actionName} failed: {exception.Message}";
-            PlcStatus = _isOnline ? $"Online · {result}" : $"Offline · {result}";
+            PlcStatus = result;
         }
     }
 
@@ -341,7 +334,7 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         var action = GetBuildOperationName(operation);
         var result = exitCode == 0 ? $"{action} succeeded" : $"{action} failed ({exitCode})";
-        PlcStatus = _isOnline ? $"Online · {result}" : $"Offline · {result}";
+        PlcStatus = result;
     }
 
     private static string GetBuildOperationName(BuildOperation operation) =>

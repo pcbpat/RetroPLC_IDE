@@ -42,8 +42,6 @@ public sealed class DockFactory : Factory
     private Timer? _projectRefreshTimer;
     private readonly IStrucppLanguageService _languageClient = new StrucppLanguageService();
     private readonly SemaphoreSlim _languageServerLifecycle = new(1, 1);
-    private readonly Dictionary<string, IReadOnlyList<StrucppDiagnostic>> _diagnostics =
-        new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _languageServerDocuments =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, IReadOnlyList<StrucppDocumentSymbol>> _projectSymbols =
@@ -207,8 +205,6 @@ public sealed class DockFactory : Factory
         document.DefinitionProvider = GoToDocumentDefinitionAsync;
         document.ReferencesProvider = FindDocumentReferencesAsync;
         document.FormatProvider = FormatDocumentAsync;
-        if (_diagnostics.TryGetValue(filePath, out var diagnostics))
-            document.SetDiagnostics(diagnostics);
         AddDockable(_documentDock, document);
         SetActiveDockable(document);
         SetFocusedDockable(_documentDock, document);
@@ -362,14 +358,7 @@ public sealed class DockFactory : Factory
             _ => throw new ArgumentOutOfRangeException(nameof(definition.Kind))
         };
 
-        var category = FindPouCategory(_currentProject, categoryName);
         var relativePath = $"ProjectFiles/POUs/{folderName}/{definition.Name}.st";
-        if (category.Children.Any(child =>
-                string.Equals(child.FilePath, relativePath, StringComparison.OrdinalIgnoreCase)))
-        {
-            throw new IOException($"A POU named '{definition.Name}' already exists.");
-        }
-
         var filePath = Path.Combine(
             _projectDirectory,
             relativePath.Replace('/', Path.DirectorySeparatorChar));
@@ -383,15 +372,25 @@ public sealed class DockFactory : Factory
             writer.Write(CreatePouSource(definition));
         }
 
+        var category = FindOrCreatePouCategory(
+            _currentProject,
+            categoryName,
+            out var pousWasAdded,
+            out var categoryWasAdded);
+        if (category.Children.Any(child =>
+                string.Equals(child.FilePath, relativePath, StringComparison.OrdinalIgnoreCase)))
+        {
+            File.Delete(filePath);
+            throw new IOException($"A POU named '{definition.Name}' already exists.");
+        }
+
         var node = new ProjectNodeDefinition
         {
             Name = definition.Name,
             Icon = "program",
-            FilePath = relativePath,
-            IsExpanded = true
+            FilePath = relativePath
         };
         category.Children.Add(node);
-        category.IsExpanded = true;
 
         try
         {
@@ -402,6 +401,12 @@ public sealed class DockFactory : Factory
         catch
         {
             category.Children.Remove(node);
+            var root = _currentProject.Tree[0];
+            var pous = root.Children.First(child => child.Name == "POUs");
+            if (categoryWasAdded)
+                pous.Children.Remove(category);
+            if (pousWasAdded)
+                root.Children.Remove(pous);
             File.Delete(filePath);
             throw;
         }
@@ -452,8 +457,7 @@ public sealed class DockFactory : Factory
             category = new ProjectNodeDefinition
             {
                 Name = categoryName,
-                Icon = "folder",
-                IsExpanded = true
+                Icon = "folder"
             };
             dataTypes.Children.Add(category);
             categoryWasAdded = true;
@@ -470,12 +474,9 @@ public sealed class DockFactory : Factory
         {
             Name = definition.Name,
             Icon = "data-types",
-            FilePath = relativePath,
-            IsExpanded = true
+            FilePath = relativePath
         };
         category.Children.Add(node);
-        category.IsExpanded = true;
-        dataTypes.IsExpanded = true;
 
         try
         {
@@ -530,11 +531,9 @@ public sealed class DockFactory : Factory
             Name = name,
             Icon = "controller",
             Kind = ProjectNodeKinds.Configuration,
-            FilePath = relativePath,
-            IsExpanded = true
+            FilePath = relativePath
         };
         configurations.Children.Add(node);
-        configurations.IsExpanded = true;
 
         try
         {
@@ -629,8 +628,7 @@ public sealed class DockFactory : Factory
                              ?? new ProjectNodeDefinition
                              {
                                  Name = "Configurations",
-                                 Icon = "controller",
-                                 IsExpanded = true
+                                 Icon = "controller"
                              };
         if (!root.Children.Contains(configurations))
             root.Children.Add(configurations);
@@ -812,16 +810,41 @@ public sealed class DockFactory : Factory
         SetFocusedDockable(_terminalDock, tool);
     }
 
-    private static ProjectNodeDefinition FindPouCategory(ProjectDocument project, string categoryName)
+    private static ProjectNodeDefinition FindOrCreatePouCategory(
+        ProjectDocument project,
+        string categoryName,
+        out bool pousWasAdded,
+        out bool categoryWasAdded)
     {
-        ProjectNodeDefinition FindChild(ProjectNodeDefinition parent, string name) =>
-            parent.Children.FirstOrDefault(child => string.Equals(child.Name, name, StringComparison.Ordinal))
-            ?? throw new InvalidDataException($"The project tree does not contain '{name}'.");
-
         var projectRoot = project.Tree.FirstOrDefault()
                           ?? throw new InvalidDataException("The project tree is empty.");
-        var pous = FindChild(projectRoot, "POUs");
-        return FindChild(pous, categoryName);
+        var pous = projectRoot.Children.FirstOrDefault(child =>
+            string.Equals(child.Name, "POUs", StringComparison.Ordinal));
+        pousWasAdded = pous is null;
+        if (pous is null)
+        {
+            pous = new ProjectNodeDefinition
+            {
+                Name = "POUs",
+                Icon = "pous"
+            };
+            projectRoot.Children.Add(pous);
+        }
+
+        var category = pous.Children.FirstOrDefault(child =>
+            string.Equals(child.Name, categoryName, StringComparison.Ordinal));
+        categoryWasAdded = category is null;
+        if (category is null)
+        {
+            category = new ProjectNodeDefinition
+            {
+                Name = categoryName,
+                Icon = "folder"
+            };
+            pous.Children.Add(category);
+        }
+
+        return category;
     }
 
     private static ProjectNodeDefinition FindOrCreateDataTypesFolder(ProjectDocument project)
@@ -836,8 +859,7 @@ public sealed class DockFactory : Factory
         dataTypes = new ProjectNodeDefinition
         {
             Name = "Data Types",
-            Icon = "data-types",
-            IsExpanded = true
+            Icon = "data-types"
         };
         root.Children.Insert(0, dataTypes);
         return dataTypes;
@@ -1052,7 +1074,6 @@ public sealed class DockFactory : Factory
             if (cancellationToken.IsCancellationRequested)
                 return;
 
-            _diagnostics.Clear();
             _languageServerDocuments.Clear();
             _projectSymbols.Clear();
             await _languageClient.StartAsync(projectDirectory, cancellationToken);
@@ -1108,7 +1129,6 @@ public sealed class DockFactory : Factory
             {
                 await _languageClient.CloseDocumentAsync(filePath, cancellationToken);
                 _languageServerDocuments.Remove(filePath);
-                _diagnostics.Remove(filePath);
                 _messagesTool?.RemoveDiagnostics(filePath);
             }
 
@@ -1622,16 +1642,7 @@ public sealed class DockFactory : Factory
         StrucppDiagnosticsEventArgs args) =>
         Dispatcher.UIThread.Post(() =>
         {
-            _diagnostics[args.FilePath] = args.Diagnostics;
             _messagesTool?.UpdateDiagnostics(args.FilePath, args.Diagnostics);
-            Find(dockable => dockable is DocumentViewModel)
-                .OfType<DocumentViewModel>()
-                .FirstOrDefault(document =>
-                    string.Equals(
-                        document.FilePath,
-                        args.FilePath,
-                        StringComparison.OrdinalIgnoreCase))
-                ?.SetDiagnostics(args.Diagnostics);
         });
 
     private async Task RefreshProjectSymbolsAsync(

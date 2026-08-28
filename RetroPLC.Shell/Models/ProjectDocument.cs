@@ -15,7 +15,7 @@ public sealed class ProjectDocument
 
     public int FormatVersion { get; set; } = CurrentFormatVersion;
     public string Name { get; set; } = string.Empty;
-    public string Template { get; set; } = "StandardProject";
+    public string Template { get; set; } = "EmptyProject";
     public List<ProjectNodeDefinition> Tree { get; set; } = [];
 }
 
@@ -23,7 +23,7 @@ public sealed class ProjectNodeDefinition
 {
     public string Name { get; set; } = string.Empty;
     public string Icon { get; set; } = "folder";
-    public bool IsExpanded { get; set; } = true;
+    public bool IsExpanded { get; set; }
     public string? FilePath { get; set; }
     public string? LibraryFileName { get; set; }
     public string? Kind { get; set; }
@@ -91,7 +91,7 @@ public static class ProjectStore
         if (document.Tree.Count == 0)
             throw new InvalidOperationException("A project must contain at least one tree element.");
 
-        CopyTemplateSources(projectDirectory);
+        CreateProjectDirectories(projectDirectory);
         PopulateProjectLibraries(document, projectDirectory);
         Save(document, manifestPath);
         return new OpenedProject(document, projectDirectory, manifestPath);
@@ -141,18 +141,27 @@ public static class ProjectStore
             throw new InvalidOperationException("The project name contains characters that cannot be used in a folder name.");
     }
 
-    private static void CopyTemplateSources(string projectDirectory)
+    private static void CreateProjectDirectories(string projectDirectory)
     {
-        var sourceRoot = Path.Combine(AppContext.BaseDirectory, "ProjectFiles");
-        if (!Directory.Exists(sourceRoot))
-            return;
+        string[] relativeDirectories =
+        [
+            "ProjectFiles/DataTypes/Structures",
+            "ProjectFiles/DataTypes/Enumerations",
+            "ProjectFiles/DataTypes/AliasesAndSubranges",
+            "ProjectFiles/DataTypes/Arrays",
+            "ProjectFiles/POUs/Programs",
+            "ProjectFiles/POUs/FunctionBlocks",
+            "ProjectFiles/POUs/Functions",
+            "ProjectFiles/Interfaces",
+            "ProjectFiles/Configurations",
+            "ProjectFiles/Tests"
+        ];
 
-        foreach (var sourcePath in Directory.EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories))
+        foreach (var relativeDirectory in relativeDirectories)
         {
-            var relativePath = Path.GetRelativePath(sourceRoot, sourcePath);
-            var destinationPath = Path.Combine(projectDirectory, "ProjectFiles", relativePath);
-            Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
-            File.Copy(sourcePath, destinationPath, false);
+            Directory.CreateDirectory(Path.Combine(
+                projectDirectory,
+                relativeDirectory.Replace('/', Path.DirectorySeparatorChar)));
         }
     }
 
@@ -167,16 +176,6 @@ public static class ProjectStore
             .Where(fileName => !string.IsNullOrWhiteSpace(fileName))
             .Cast<string>()
             .ToList();
-
-        // Older project manifests predate explicit library references. Seed
-        // those projects once, then treat their local Libraries folder as the
-        // authoritative set from that point forward.
-        if (referencedLibraries.Count == 0)
-        {
-            referencedLibraries = StrucppToolchain.GetBundledLibraries()
-                .Select(library => library.FileName)
-                .ToList();
-        }
 
         StrucppToolchain.PopulateProjectLibraries(projectDirectory, referencedLibraries);
     }

@@ -45,15 +45,7 @@
                     Background="{DynamicResource {x:Static common:SystemColors.WindowBrushKey}}"
                     BorderBrush="{DynamicResource {x:Static common:SystemColors.ControlDarkBrushKey}}"
                     BorderThickness="1">
-                <TreeView x:Name="CategoryTree" SelectionChanged="CategoryTree_OnSelectionChanged">
-                    <TreeViewItem Tag="Libraries">
-                        <TreeViewItem.Header>
-                            <StackPanel Orientation="Horizontal" Spacing="5">
-                                <Image Width="16" Height="16" Source="{x:Static icons:Se98Icons+Places+Size16.Folder}" />
-                                <TextBlock Text="Libraries" />
-                            </StackPanel>
-                        </TreeViewItem.Header>
-                    </TreeViewItem>
+                <TreeView x:Name="CategoryTree">
                     <TreeViewItem Tag="Projects">
                         <TreeViewItem.Header>
                             <StackPanel Orientation="Horizontal" Spacing="5">
@@ -78,31 +70,7 @@
                         </ItemsPanelTemplate>
                     </ListBox.ItemsPanel>
 
-                    <ListBoxItem Tag="StandardLibrary">
-                        <StackPanel HorizontalAlignment="Center" Spacing="4">
-                            <Image Classes="template-icon" Source="{x:Static icons:Se98Icons+Mimes+Size32.PackageXGeneric}" />
-                            <TextBlock Text="Standard library" TextAlignment="Center" TextWrapping="Wrap" />
-                        </StackPanel>
-                    </ListBoxItem>
-                    <ListBoxItem Tag="EmptyLibrary">
-                        <StackPanel HorizontalAlignment="Center" Spacing="4">
-                            <Image Classes="template-icon" Source="{x:Static icons:Se98Icons+Mimes+Size32.PackageXGeneric}" />
-                            <TextBlock Text="Empty library" TextAlignment="Center" TextWrapping="Wrap" />
-                        </StackPanel>
-                    </ListBoxItem>
-                    <ListBoxItem Tag="ExternalLibrary">
-                        <StackPanel HorizontalAlignment="Center" Spacing="4">
-                            <Image Classes="template-icon" Source="{x:Static icons:Se98Icons+Mimes+Size32.PackageXGeneric}" />
-                            <TextBlock Text="External library" TextAlignment="Center" TextWrapping="Wrap" />
-                        </StackPanel>
-                    </ListBoxItem>
-                    <ListBoxItem Tag="StandardProject" IsVisible="False">
-                        <StackPanel HorizontalAlignment="Center" Spacing="4">
-                            <Image Classes="template-icon" Source="{x:Static icons:Se98Icons+Apps+Size32.Codeblocks}" />
-                            <TextBlock Text="Standard project" TextAlignment="Center" TextWrapping="Wrap" />
-                        </StackPanel>
-                    </ListBoxItem>
-                    <ListBoxItem Tag="EmptyProject" IsVisible="False">
+                    <ListBoxItem Tag="EmptyProject">
                         <StackPanel HorizontalAlignment="Center" Spacing="4">
                             <Image Classes="template-icon" Source="{x:Static icons:Se98Icons+Apps+Size32.Codeblocks}" />
                             <TextBlock Text="Empty project" TextAlignment="Center" TextWrapping="Wrap" />
@@ -120,14 +88,14 @@
                 BorderThickness="1">
             <TextBlock x:Name="DescriptionText"
                        VerticalAlignment="Center"
-                       Text="A reusable IEC 61131-3 library with the standard project structure." />
+                       Text="An empty PLC project with no predefined program objects." />
         </Border>
 
         <Grid Grid.Row="3" ColumnDefinitions="58,*,Auto" RowDefinitions="Auto,Auto" RowSpacing="7">
             <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="Name:" />
             <TextBox x:Name="ProjectNameBox"
                      Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2"
-                     Text="Library1" />
+                     Text="Project1" />
 
             <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Text="Location:" />
             <TextBox x:Name="LocationBox" Grid.Row="1" Grid.Column="1" Text="Documents/RetroPLC" />
