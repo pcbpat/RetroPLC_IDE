@@ -5,6 +5,7 @@ with .NET and Avalonia. It integrates the STruC++ compiler and language server
 for editing and building IEC 61131-3 projects.
 
 https://github.com/user-attachments/assets/962fade2-2978-4fd7-b382-b99ae306dd80
+
 The example project shown in the video can be found in the `TestProj` folder of the repository.
 
 ## Requirements
