@@ -58,7 +58,8 @@
                               ItemsSource="{Binding Children}"
                               x:DataType="vm:DeviceTreeNode">
                 <StackPanel Orientation="Horizontal"
-                            Spacing="3">
+                            Spacing="3"
+                            DoubleTapped="Node_OnDoubleTapped">
                     <Image Width="16"
                            Height="16"
                            Stretch="None"

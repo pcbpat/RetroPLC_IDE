@@ -2,7 +2,6 @@
 using System;
 using System.Threading.Tasks;
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
@@ -42,30 +41,52 @@ public partial class DevicesView : UserControl
             _contextNode = contextItem?.DataContext as DeviceTreeNode;
             return;
         }
+    }
 
-        if (e.ClickCount != 2)
-            return;
-
-        if (source is ToggleButton || source.FindAncestorOfType<ToggleButton>() is not null)
-            return;
-
-        var item = source as TreeViewItem ?? source.FindAncestorOfType<TreeViewItem>();
-        if (item?.DataContext is DeviceTreeNode node &&
-            DataContext is DevicesViewModel viewModel &&
-            viewModel.TryOpenNode(node))
+    private void Node_OnDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is Control { DataContext: DeviceTreeNode node } &&
+            DataContext is DevicesViewModel viewModel)
         {
-            e.Handled = true;
+            viewModel.TryOpenNode(node);
+        }
+
+        // TreeViewItem normally expands its children when its header receives
+        // this event. The header opens the source instead; only the separate
+        // expander toggle may change IsExpanded.
+        e.Handled = true;
+    }
+
+    private async void ContextMenu_OnOpening(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        var contextNode = _contextNode;
+        SetRenameMenuVisibility(false);
+        AddResourceMenuItem.IsEnabled = contextNode?.Kind == ProjectNodeKinds.Configuration;
+        AddTaskMenuItem.IsEnabled = contextNode?.Kind == ProjectNodeKinds.Resource;
+
+        if (contextNode is not { SupportsLanguageServerRename: true } node ||
+            DataContext is not DevicesViewModel viewModel)
+        {
+            return;
+        }
+
+        try
+        {
+            var canRename = await viewModel.PrepareRenameAsync(node) is not null;
+            if (ReferenceEquals(_contextNode, node))
+                SetRenameMenuVisibility(canRename);
+        }
+        catch
+        {
+            if (ReferenceEquals(_contextNode, node))
+                SetRenameMenuVisibility(false);
         }
     }
 
-    private void ContextMenu_OnOpening(object? sender, System.ComponentModel.CancelEventArgs e)
+    private void SetRenameMenuVisibility(bool isVisible)
     {
-        var contextNode = _contextNode;
-        var canRename = contextNode?.SupportsLanguageServerRename == true;
-        RenameMenuItem.IsVisible = canRename;
-        RenameSeparator.IsVisible = canRename;
-        AddResourceMenuItem.IsEnabled = contextNode?.Kind == ProjectNodeKinds.Configuration;
-        AddTaskMenuItem.IsEnabled = contextNode?.Kind == ProjectNodeKinds.Resource;
+        RenameMenuItem.IsVisible = isVisible;
+        RenameSeparator.IsVisible = isVisible;
     }
 
     private async void Rename_OnClick(object? sender, RoutedEventArgs e)

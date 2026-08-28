@@ -428,7 +428,7 @@ public sealed class DevicesViewModel : Tool
         var occurrences = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var node in nodes)
         {
-            var identity = $"{node.Name}\u001f{node.FilePath}\u001f{node.LibraryFileName}";
+            var identity = $"{node.Name}\u001f{node.FilePath}\u001f{node.LibraryFileName}\u001f{node.IsTransient}";
             occurrences.TryGetValue(identity, out var occurrence);
             occurrences[identity] = occurrence + 1;
             var key = $"{parentKey}/{identity}\u001f{occurrence}";
@@ -706,20 +706,7 @@ public sealed class DevicesViewModel : Tool
             filePath: relativePath,
             location: new StrucppLocation(fullPath, symbol.SelectionRange),
             isTransient: true,
-            supportsLanguageServerRename: IsLanguageServerRenameCandidate(symbol));
-
-    /// <summary>
-    /// STruC++ currently provides complete prepareRename/reference coverage
-    /// for variable declarations. Other document-symbol kinds (including
-    /// interfaces, type declarations and enum members) are published for
-    /// navigation but are not complete rename targets, so the project tree
-    /// must not advertise Rename for them.
-    /// </summary>
-    private static bool IsLanguageServerRenameCandidate(StrucppDocumentSymbol symbol) =>
-        // LSP SymbolKind.Property is also used for VAR_INPUT/VAR_OUTPUT/
-        // VAR_IN_OUT. prepareRename remains the final authority because the
-        // same kind can represent an unsupported IEC PROPERTY declaration.
-        symbol.Kind is 7 or 13;
+            supportsLanguageServerRename: true);
 
     /// <summary>
     /// POUs and Interfaces render as bare identifiers (the declaration kind
