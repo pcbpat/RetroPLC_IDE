@@ -176,7 +176,7 @@ public sealed class DockFactory : Factory
 
         var baseDirectory = _projectDirectory ?? AppContext.BaseDirectory;
         var filePath = Path.GetFullPath(Path.Combine(baseDirectory, relativePath));
-        var existing = _documentDock.VisibleDockables?
+        var existing = Find(dockable => dockable is DocumentViewModel)
             .OfType<DocumentViewModel>()
             .FirstOrDefault(document =>
                 string.Equals(document.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
@@ -184,7 +184,12 @@ public sealed class DockFactory : Factory
         if (existing is not null)
         {
             SetActiveDockable(existing);
-            SetFocusedDockable(_documentDock, existing);
+            if (existing.Owner is IDock owner)
+            {
+                SetFocusedDockable(owner, existing);
+            }
+
+            ActivateWindow(existing);
             return;
         }
 
