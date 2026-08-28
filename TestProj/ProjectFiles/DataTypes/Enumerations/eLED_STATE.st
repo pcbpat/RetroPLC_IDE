@@ -1,0 +1,3 @@
+TYPE
+    eLED_STATE : (LED_ON, LED_OFF);
+END_TYPE

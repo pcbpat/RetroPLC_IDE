@@ -1,0 +1,113 @@
+{
+  "formatVersion": 1,
+  "name": "TestProj",
+  "template": "EmptyProject",
+  "tree": [
+    {
+      "name": "TestProj",
+      "icon": "application",
+      "isExpanded": false,
+      "children": [
+        {
+          "name": "Data Types",
+          "icon": "data-types",
+          "isExpanded": false,
+          "children": [
+            {
+              "name": "Structures",
+              "icon": "folder",
+              "isExpanded": false,
+              "children": []
+            },
+            {
+              "name": "Enumerations",
+              "icon": "folder",
+              "isExpanded": false,
+              "children": [
+                {
+                  "name": "eLED_STATE",
+                  "icon": "data-types",
+                  "isExpanded": false,
+                  "filePath": "ProjectFiles/DataTypes/Enumerations/eLED_STATE.st",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "name": "Aliases and Subranges",
+              "icon": "folder",
+              "isExpanded": false,
+              "children": []
+            },
+            {
+              "name": "Arrays",
+              "icon": "folder",
+              "isExpanded": false,
+              "children": []
+            }
+          ]
+        },
+        {
+          "name": "POUs",
+          "icon": "pous",
+          "isExpanded": false,
+          "children": [
+            {
+              "name": "Programs",
+              "icon": "folder",
+              "isExpanded": false,
+              "children": [
+                {
+                  "name": "Main",
+                  "icon": "program",
+                  "isExpanded": false,
+                  "filePath": "ProjectFiles/POUs/Programs/Main.st",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "name": "Function Blocks",
+              "icon": "folder",
+              "isExpanded": false,
+              "children": []
+            },
+            {
+              "name": "Functions",
+              "icon": "folder",
+              "isExpanded": false,
+              "children": []
+            }
+          ]
+        },
+        {
+          "name": "Interfaces",
+          "icon": "folder",
+          "isExpanded": false,
+          "children": []
+        },
+        {
+          "name": "Configurations",
+          "icon": "controller",
+          "isExpanded": false,
+          "children": [
+            {
+              "name": "Configuration1",
+              "icon": "controller",
+              "isExpanded": false,
+              "filePath": "ProjectFiles/Configurations/Configuration1.st",
+              "kind": "configuration",
+              "children": []
+            }
+          ]
+        },
+        {
+          "name": "Tests",
+          "icon": "task",
+          "isExpanded": false,
+          "children": []
+        }
+      ]
+    }
+  ]
+}
