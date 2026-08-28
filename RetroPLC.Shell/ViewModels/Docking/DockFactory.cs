@@ -1508,8 +1508,45 @@ public sealed class DockFactory : Factory
             }
         }
 
+        // didSave does not make STruC++ re-analyze a document, and didChange
+        // analysis is debounced. Reopen each edited document through LSP so
+        // the following documentSymbol request observes the completed rename
+        // immediately instead of leaving the project tree stale until a later
+        // manual edit/save.
+        foreach (var update in updatedTexts)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await ReloadLanguageServerDocumentAsync(
+                update.FilePath,
+                update.Text,
+                update.OpenDocument?.Version ?? 0,
+                cancellationToken);
+            await RefreshDocumentSymbolsAsync(update.FilePath, cancellationToken);
+        }
+
         return updatedTexts.Sum(update =>
             workspaceEdit.Changes[update.FilePath].Count);
+    }
+
+    private async Task ReloadLanguageServerDocumentAsync(
+        string filePath,
+        string text,
+        int version,
+        CancellationToken cancellationToken)
+    {
+        if (!_languageClient.IsRunning)
+            return;
+
+        var fullPath = Path.GetFullPath(filePath);
+        if (_languageServerDocuments.Contains(fullPath))
+            await _languageClient.CloseDocumentAsync(fullPath, cancellationToken);
+
+        await _languageClient.OpenDocumentAsync(
+            fullPath,
+            text,
+            version,
+            cancellationToken);
+        _languageServerDocuments.Add(fullPath);
     }
 
     private static int GetOffset(
@@ -1638,14 +1675,18 @@ public sealed class DockFactory : Factory
         });
     }
 
-    private async Task RefreshDocumentSymbolsAsync(string filePath)
+    private async Task RefreshDocumentSymbolsAsync(
+        string filePath,
+        CancellationToken cancellationToken = default)
     {
         if (!_languageClient.IsRunning)
             return;
 
         try
         {
-            var symbols = await _languageClient.GetDocumentSymbolsAsync(filePath);
+            var symbols = await _languageClient.GetDocumentSymbolsAsync(
+                filePath,
+                cancellationToken);
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
                 if (_currentProject is null ||
