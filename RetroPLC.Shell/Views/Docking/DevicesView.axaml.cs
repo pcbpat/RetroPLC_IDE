@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 using System;
+using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
@@ -60,9 +61,67 @@ public partial class DevicesView : UserControl
     private void ContextMenu_OnOpening(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         var contextNode = _contextNode;
+        var canRename = contextNode?.SupportsLanguageServerRename == true;
+        RenameMenuItem.IsVisible = canRename;
+        RenameSeparator.IsVisible = canRename;
         AddResourceMenuItem.IsEnabled = contextNode?.Kind == ProjectNodeKinds.Configuration;
         AddTaskMenuItem.IsEnabled = contextNode?.Kind == ProjectNodeKinds.Resource;
     }
+
+    private async void Rename_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (_contextNode is not { SupportsLanguageServerRename: true } node ||
+            DataContext is not DevicesViewModel viewModel ||
+            this.FindAncestorOfType<Window>() is not { } owner)
+        {
+            return;
+        }
+
+        try
+        {
+            var preparation = await viewModel.PrepareRenameAsync(node);
+            if (preparation is null)
+            {
+                await ShowRenameMessageAsync(
+                    owner,
+                    "The selected tree element cannot be renamed by the STruC++ language server.",
+                    MessageBoxIcon.Information);
+                return;
+            }
+
+            var dialog = new RenameSymbolWindow(preparation.Placeholder);
+            if (!await dialog.ShowDialog<bool>(owner) ||
+                dialog.Result is not { } newName ||
+                string.Equals(newName, preparation.Placeholder, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            var editCount = await viewModel.RenameAsync(node, newName);
+            if (editCount == 0)
+            {
+                await ShowRenameMessageAsync(
+                    owner,
+                    "No matching declarations or references were found.",
+                    MessageBoxIcon.Information);
+            }
+        }
+        catch (Exception exception)
+        {
+            await ShowRenameMessageAsync(owner, exception.Message, MessageBoxIcon.Error);
+        }
+    }
+
+    private static Task ShowRenameMessageAsync(
+        Window owner,
+        string message,
+        MessageBoxIcon icon) =>
+        MessageBox.ShowDialog(
+            owner,
+            message,
+            "Rename Symbol",
+            MessageBoxButtons.Ok,
+            icon);
 
     private async void AddPou_OnClick(object? sender, RoutedEventArgs e)
     {

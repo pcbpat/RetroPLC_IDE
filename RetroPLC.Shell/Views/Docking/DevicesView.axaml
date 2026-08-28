@@ -24,6 +24,10 @@
               VerticalAlignment="Stretch">
         <TreeView.ContextMenu>
             <ContextMenu Opening="ContextMenu_OnOpening">
+                <MenuItem x:Name="RenameMenuItem"
+                          Header="_Rename..."
+                          Click="Rename_OnClick" />
+                <Separator x:Name="RenameSeparator" />
                 <MenuItem Header="Add _POU..."
                           Click="AddPou_OnClick" />
                 <MenuItem Header="Add _Data Type..."

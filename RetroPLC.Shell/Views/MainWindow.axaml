@@ -30,11 +30,11 @@
                 <MenuItem Header="_File">
                     <MenuItem Header="_New Project..." InputGesture="Ctrl+N" Click="NewProject_OnClick" />
                     <MenuItem Header="_Open Project/Solution..." InputGesture="Ctrl+O" Click="OpenProject_OnClick" />
-                    <MenuItem Header="Open Project from _Target..." IsEnabled="False" />
-                    <MenuItem Header="Open Solution from _Archive..." IsEnabled="False" />
-                    <MenuItem Header="Add New Project..." IsEnabled="False" />
-                    <MenuItem Header="Add Existing Item..." IsEnabled="False" />
-                    <MenuItem Header="Recent Projects and Solutions" IsEnabled="False" />
+                    <MenuItem Header="Open Project from _Target..." IsVisible="False" />
+                    <MenuItem Header="Open Solution from _Archive..." IsVisible="False" />
+                    <MenuItem Header="Add New Project..." IsVisible="False" />
+                    <MenuItem Header="Add Existing Item..." IsVisible="False" />
+                    <MenuItem Header="Recent Projects and Solutions" IsVisible="False" />
                     <Separator />
                     <MenuItem Header="_Save"
                               InputGesture="Ctrl+S"
@@ -42,70 +42,70 @@
                     <MenuItem Header="Save _All"
                               InputGesture="Ctrl+Shift+S"
                               Command="{Binding SaveAllDocumentsCommand}" />
-                    <MenuItem Header="Save Solution _As..." IsEnabled="False" />
-                    <MenuItem Header="Save Solution as Archive..." IsEnabled="False" />
-                    <MenuItem Header="Save PLC Project As..." IsEnabled="False" />
-                    <MenuItem Header="Save PLC Project as Archive..." IsEnabled="False" />
+                    <MenuItem Header="Save Solution _As..." IsVisible="False" />
+                    <MenuItem Header="Save Solution as Archive..." IsVisible="False" />
+                    <MenuItem Header="Save PLC Project As..." IsVisible="False" />
+                    <MenuItem Header="Save PLC Project as Archive..." IsVisible="False" />
                     <Separator />
-                    <MenuItem Header="Send by _E-Mail..." IsEnabled="False" />
-                    <MenuItem Header="Close Solution" IsEnabled="False" />
-                    <MenuItem Header="Close" IsEnabled="False" />
-                    <Separator />
-                    <MenuItem Header="Page Set_up..." IsEnabled="False" />
-                    <MenuItem Header="_Print..." InputGesture="Ctrl+P" IsEnabled="False" />
-                    <Separator />
+                    <MenuItem Header="Send by _E-Mail..." IsVisible="False" />
+                    <MenuItem Header="Close Solution" IsVisible="False" />
+                    <MenuItem Header="Close" IsVisible="False" />
+                    <Separator IsVisible="False" />
+                    <MenuItem Header="Page Set_up..." IsVisible="False" />
+                    <MenuItem Header="_Print..." InputGesture="Ctrl+P" IsVisible="False" />
+                    <Separator IsVisible="False" />
                     <MenuItem Header="E_xit" Click="Exit_OnClick" />
                 </MenuItem>
 
                 <MenuItem Header="_Edit">
-                    <MenuItem Header="_Undo" InputGesture="Ctrl+Z" IsEnabled="False" />
-                    <MenuItem Header="_Redo" InputGesture="Ctrl+Y" IsEnabled="False" />
-                    <Separator />
-                    <MenuItem Header="Cu_t" InputGesture="Ctrl+X" IsEnabled="False" />
-                    <MenuItem Header="_Copy" InputGesture="Ctrl+C" IsEnabled="False" />
-                    <MenuItem Header="_Paste" InputGesture="Ctrl+V" IsEnabled="False" />
-                    <MenuItem Header="_Delete" InputGesture="Delete" IsEnabled="False" />
-                    <MenuItem Header="Select _All" InputGesture="Ctrl+A" IsEnabled="False" />
-                    <Separator />
-                    <MenuItem Header="Input Assistant..." IsEnabled="False" />
-                    <MenuItem Header="Auto Declare..." IsEnabled="False" />
-                    <MenuItem Header="Go To..." InputGesture="Ctrl+G" IsEnabled="False" />
+                    <MenuItem Header="_Undo" InputGesture="Ctrl+Z" IsVisible="False" />
+                    <MenuItem Header="_Redo" InputGesture="Ctrl+Y" IsVisible="False" />
+                    <Separator IsVisible="False" />
+                    <MenuItem Header="Cu_t" InputGesture="Ctrl+X" IsVisible="False" />
+                    <MenuItem Header="_Copy" InputGesture="Ctrl+C" IsVisible="False" />
+                    <MenuItem Header="_Paste" InputGesture="Ctrl+V" IsVisible="False" />
+                    <MenuItem Header="_Delete" InputGesture="Delete" IsVisible="False" />
+                    <MenuItem Header="Select _All" InputGesture="Ctrl+A" IsVisible="False" />
+                    <Separator IsVisible="False" />
+                    <MenuItem Header="Input Assistant..." IsVisible="False" />
+                    <MenuItem Header="Auto Declare..." IsVisible="False" />
+                    <MenuItem Header="Go To..." InputGesture="Ctrl+G" IsVisible="False" />
                     <MenuItem Header="Go To Definition"
                               InputGesture="F12"
                               Command="{Binding GoToDefinitionCommand}" />
                     <MenuItem Header="Find All References"
                               InputGesture="Shift+F12"
                               Command="{Binding FindReferencesCommand}" />
-                    <MenuItem Header="Navigate To..." IsEnabled="False" />
+                    <MenuItem Header="Navigate To..." IsVisible="False" />
                     <Separator />
                     <MenuItem Header="Format Document"
                               InputGesture="Ctrl+Alt+F"
                               Command="{Binding FormatDocumentCommand}" />
                     <Separator />
-                    <MenuItem Header="Make Uppercase" IsEnabled="False" />
-                    <MenuItem Header="Make Lowercase" IsEnabled="False" />
-                    <MenuItem Header="View White Spaces" IsEnabled="False" />
-                    <MenuItem Header="Quick Find..." InputGesture="Ctrl+F" IsEnabled="False" />
-                    <MenuItem Header="Quick Replace..." InputGesture="Ctrl+H" IsEnabled="False" />
-                    <MenuItem Header="Switch Write Mode" IsEnabled="False" />
-                    <Separator />
+                    <MenuItem Header="Make Uppercase" IsVisible="False" />
+                    <MenuItem Header="Make Lowercase" IsVisible="False" />
+                    <MenuItem Header="View White Spaces" IsVisible="False" />
+                    <MenuItem Header="Quick Find..." InputGesture="Ctrl+F" IsVisible="False" />
+                    <MenuItem Header="Quick Replace..." InputGesture="Ctrl+H" IsVisible="False" />
+                    <MenuItem Header="Switch Write Mode" IsVisible="False" />
+                    <Separator IsVisible="False" />
                     <MenuItem Header="Rename..."
                               InputGesture="F2"
                               Command="{Binding RenameSymbolCommand}" />
-                    <MenuItem Header="Add Variable..." IsEnabled="False" />
-                    <MenuItem Header="Remove Variable..." IsEnabled="False" />
-                    <MenuItem Header="Reorder Variables..." IsEnabled="False" />
+                    <MenuItem Header="Add Variable..." IsVisible="False" />
+                    <MenuItem Header="Remove Variable..." IsVisible="False" />
+                    <MenuItem Header="Reorder Variables..." IsVisible="False" />
                 </MenuItem>
 
                 <MenuItem Header="_View">
-                    <MenuItem Header="Open Object..." IsEnabled="False" />
-                    <MenuItem Header="Tabular View" IsEnabled="False" />
-                    <MenuItem Header="Textual View" IsEnabled="False" />
+                    <MenuItem Header="Open Object..." IsVisible="False" />
+                    <MenuItem Header="Tabular View" IsVisible="False" />
+                    <MenuItem Header="Textual View" IsVisible="False" />
                     <MenuItem Header="Full Screen" InputGesture="Shift+Alt+Enter" Click="FullScreen_OnClick" />
                     <Separator />
-                    <MenuItem Header="Toolbars" IsEnabled="False" />
-                    <MenuItem Header="Solution Explorer" IsEnabled="False" />
-                    <MenuItem Header="Properties Window" IsEnabled="False" />
+                    <MenuItem Header="Toolbars" IsVisible="False" />
+                    <MenuItem Header="Solution Explorer" IsVisible="False" />
+                    <MenuItem Header="Properties Window" IsVisible="False" />
                     <MenuItem Header="_Appearance">
                         <MenuItem Header="_Dark Mode"
                                   Tag="Dark"
@@ -143,9 +143,9 @@
                                       GroupName="AppearanceFontSize" Click="FontSize_OnClick" />
                         </MenuItem>
                     </MenuItem>
-                    <MenuItem Header="Toolbox" IsEnabled="False" />
-                    <MenuItem Header="Error List" IsEnabled="False" />
-                    <MenuItem Header="Output" IsEnabled="False" />
+                    <MenuItem Header="Toolbox" IsVisible="False" />
+                    <MenuItem Header="Error List" IsVisible="False" />
+                    <MenuItem Header="Output" IsVisible="False" />
                     <Separator />
                     <MenuItem Header="New _Terminal"
                               InputGesture="Ctrl+OemTilde"
@@ -159,21 +159,21 @@
                     <MenuItem Header="Add _Data Type..."
                               IsEnabled="{Binding IsProjectOpen}"
                               Click="AddDataType_OnClick" />
-                    <MenuItem Header="Add New Item..." IsEnabled="False" />
-                    <MenuItem Header="Add Existing Item..." IsEnabled="False" />
-                    <MenuItem Header="Add New Object..." IsEnabled="False" />
+                    <MenuItem Header="Add New Item..." IsVisible="False" />
+                    <MenuItem Header="Add Existing Item..." IsVisible="False" />
+                    <MenuItem Header="Add New Object..." IsVisible="False" />
                     <Separator />
-                    <MenuItem Header="Export to ZIP..." IsEnabled="False" />
-                    <MenuItem Header="Import from ZIP..." IsEnabled="False" />
-                    <MenuItem Header="Export PLCopenXML..." IsEnabled="False" />
-                    <MenuItem Header="Import PLCopenXML..." IsEnabled="False" />
+                    <MenuItem Header="Export to ZIP..." IsVisible="False" />
+                    <MenuItem Header="Import from ZIP..." IsVisible="False" />
+                    <MenuItem Header="Export PLCopenXML..." IsVisible="False" />
+                    <MenuItem Header="Import PLCopenXML..." IsVisible="False" />
                     <MenuItem Header="Import CODESYS Library..."
                               IsEnabled="{Binding IsProjectOpen}"
                               Click="ImportCodesysLibrary_OnClick" />
-                    <Separator />
-                    <MenuItem Header="New Folder" IsEnabled="False" />
-                    <MenuItem Header="Object Properties..." IsEnabled="False" />
-                    <MenuItem Header="PLC Project Settings..." IsEnabled="False" />
+                    <Separator IsVisible="False" />
+                    <MenuItem Header="New Folder" IsVisible="False" />
+                    <MenuItem Header="Object Properties..." IsVisible="False" />
+                    <MenuItem Header="PLC Project Settings..." IsVisible="False" />
                 </MenuItem>
 
                 <MenuItem Header="_Build">
@@ -190,93 +190,94 @@
                     <MenuItem Header="Check All Objects" Command="{Binding BuildCommand}" />
                 </MenuItem>
 
-                <MenuItem Header="_Debug">
-                    <MenuItem Header="New Breakpoint" InputGesture="F9" IsEnabled="False" />
-                    <MenuItem Header="Edit Breakpoint..." IsEnabled="False" />
-                    <MenuItem Header="Enable Breakpoint" IsEnabled="False" />
-                    <MenuItem Header="Disable Breakpoint" IsEnabled="False" />
-                    <MenuItem Header="Toggle Breakpoint" IsEnabled="False" />
+                <MenuItem Header="_Debug" IsVisible="False">
+                    <MenuItem Header="New Breakpoint" InputGesture="F9" IsVisible="False" />
+                    <MenuItem Header="Edit Breakpoint..." IsVisible="False" />
+                    <MenuItem Header="Enable Breakpoint" IsVisible="False" />
+                    <MenuItem Header="Disable Breakpoint" IsVisible="False" />
+                    <MenuItem Header="Toggle Breakpoint" IsVisible="False" />
                     <Separator />
-                    <MenuItem Header="Step Over" InputGesture="F10" IsEnabled="False" />
-                    <MenuItem Header="Step Into" InputGesture="F11" IsEnabled="False" />
-                    <MenuItem Header="Step Out" InputGesture="Shift+F11" IsEnabled="False" />
-                    <MenuItem Header="Show Next Statement" IsEnabled="False" />
-                    <MenuItem Header="Run To Cursor" IsEnabled="False" />
+                    <MenuItem Header="Step Over" InputGesture="F10" IsVisible="False" />
+                    <MenuItem Header="Step Into" InputGesture="F11" IsVisible="False" />
+                    <MenuItem Header="Step Out" InputGesture="Shift+F11" IsVisible="False" />
+                    <MenuItem Header="Show Next Statement" IsVisible="False" />
+                    <MenuItem Header="Run To Cursor" IsVisible="False" />
                 </MenuItem>
 
                 <MenuItem Header="P_LC">
-                    <MenuItem Header="Breakpoints" IsEnabled="False" />
+                    <MenuItem Header="Breakpoints" IsVisible="False" />
                     <MenuItem Header="Find All References"
                               InputGesture="Shift+F12"
-                              Command="{Binding FindReferencesCommand}" />
-                    <MenuItem Header="Cross Reference List" IsEnabled="False" />
-                    <MenuItem Header="Call Stack" IsEnabled="False" />
-                    <MenuItem Header="Call Tree" IsEnabled="False" />
-                    <MenuItem Header="Browse Call Tree" IsEnabled="False" />
-                    <Separator />
-                    <MenuItem Header="Watch List">
-                        <MenuItem Header="Watch 1" IsEnabled="False" />
-                        <MenuItem Header="Watch 2" IsEnabled="False" />
-                        <MenuItem Header="Watch 3" IsEnabled="False" />
-                        <MenuItem Header="Watch 4" IsEnabled="False" />
+                              Command="{Binding FindReferencesCommand}"
+                              IsVisible="False"/>
+                    <MenuItem Header="Cross Reference List" IsVisible="False" />
+                    <MenuItem Header="Call Stack" IsVisible="False" />
+                    <MenuItem Header="Call Tree" IsVisible="False" />
+                    <MenuItem Header="Browse Call Tree" IsVisible="False" />
+                    <Separator IsVisible="False" />
+                    <MenuItem Header="Watch List" IsVisible="False">
+                        <MenuItem Header="Watch 1" IsVisible="False" />
+                        <MenuItem Header="Watch 2" IsVisible="False" />
+                        <MenuItem Header="Watch 3" IsVisible="False" />
+                        <MenuItem Header="Watch 4" IsVisible="False" />
                     </MenuItem>
-                    <MenuItem Header="Watch All Forces" IsEnabled="False" />
-                    <MenuItem Header="Add to Watch" IsEnabled="False" />
+                    <MenuItem Header="Watch All Forces" IsVisible="False" />
+                    <MenuItem Header="Add to Watch" IsVisible="False" />
                     <Separator />
-                    <MenuItem Header="Go Online" Command="{Binding GoOnlineCommand}" />
-                    <MenuItem Header="Go Offline" Command="{Binding GoOfflineCommand}" />
-                    <MenuItem Header="Login" Command="{Binding LoginCommand}" />
-                    <MenuItem Header="Logout" Command="{Binding LogoutCommand}" />
+                    <MenuItem Header="Go Online" Command="{Binding GoOnlineCommand}" IsVisible="False" />
+                    <MenuItem Header="Go Offline" Command="{Binding GoOfflineCommand}" IsVisible="False" />
+                    <MenuItem Header="Login" Command="{Binding LoginCommand}" IsVisible="False" />
+                    <MenuItem Header="Logout" Command="{Binding LogoutCommand}" IsVisible="False" />
                     <MenuItem Header="Download" Command="{Binding DownloadCommand}" />
-                    <MenuItem Header="Online Change" IsEnabled="False" />
-                    <Separator />
-                    <MenuItem Header="Start" Command="{Binding RunCommand}" />
-                    <MenuItem Header="Stop" Command="{Binding StopCommand}" />
-                    <MenuItem Header="Single Cycle" IsEnabled="False" />
-                    <MenuItem Header="Reset Cold" Command="{Binding ResetPlcCommand}" />
-                    <MenuItem Header="Reset Origin" Command="{Binding ResetPlcCommand}" />
-                    <Separator />
-                    <MenuItem Header="Force Values" IsEnabled="False" />
-                    <MenuItem Header="Write Values" IsEnabled="False" />
-                    <MenuItem Header="Unforce Values" IsEnabled="False" />
-                    <MenuItem Header="Switch Flow Control Mode" IsEnabled="False" />
-                    <MenuItem Header="Display Mode">
-                        <MenuItem Header="Binary" IsEnabled="False" />
-                        <MenuItem Header="Decimal" IsEnabled="False" />
-                        <MenuItem Header="Hexadecimal" IsEnabled="False" />
+                    <MenuItem Header="Online Change" IsVisible="False" />
+                    <Separator IsVisible="False" />
+                    <MenuItem Header="Start" Command="{Binding RunCommand}" IsVisible="False" />
+                    <MenuItem Header="Stop" Command="{Binding StopCommand}" IsVisible="False" />
+                    <MenuItem Header="Single Cycle" IsVisible="False" />
+                    <MenuItem Header="Reset Cold" Command="{Binding ResetPlcCommand}" IsVisible="False" />
+                    <MenuItem Header="Reset Origin" Command="{Binding ResetPlcCommand}" IsVisible="False" />
+                    <Separator IsVisible="False" />
+                    <MenuItem Header="Force Values" IsVisible="False" />
+                    <MenuItem Header="Write Values" IsVisible="False" />
+                    <MenuItem Header="Unforce Values" IsVisible="False" />
+                    <MenuItem Header="Switch Flow Control Mode" IsVisible="False" />
+                    <MenuItem Header="Display Mode" IsVisible="False">
+                        <MenuItem Header="Binary" IsVisible="False" />
+                        <MenuItem Header="Decimal" IsVisible="False" />
+                        <MenuItem Header="Hexadecimal" IsVisible="False" />
                     </MenuItem>
-                    <Separator />
-                    <MenuItem Header="Create Localization Template..." IsEnabled="False" />
-                    <MenuItem Header="Manage Localization..." IsEnabled="False" />
-                    <MenuItem Header="Toggle Localization" IsEnabled="False" />
-                    <MenuItem Header="Active PLC Project" IsEnabled="False" />
-                    <MenuItem Header="Active PLC Instance" IsEnabled="False" />
-                    <MenuItem Header="Show Memory View" IsEnabled="False" />
+                    <Separator IsVisible="False" />
+                    <MenuItem Header="Create Localization Template..." IsVisible="False" />
+                    <MenuItem Header="Manage Localization..." IsVisible="False" />
+                    <MenuItem Header="Toggle Localization" IsVisible="False" />
+                    <MenuItem Header="Active PLC Project" IsVisible="False" />
+                    <MenuItem Header="Active PLC Instance" IsVisible="False" />
+                    <MenuItem Header="Show Memory View" IsVisible="False" />
                 </MenuItem>
 
-                <MenuItem Header="_Tools">
-                    <MenuItem Header="_Options..." IsEnabled="False" />
-                    <MenuItem Header="_Customize..." IsEnabled="False" />
+                <MenuItem Header="_Tools" IsVisible="False">
+                    <MenuItem Header="_Options..." IsVisible="False" />
+                    <MenuItem Header="_Customize..." IsVisible="False" />
                 </MenuItem>
 
                 <MenuItem Header="_Window">
-                    <MenuItem Header="Float" IsEnabled="False" />
-                    <MenuItem Header="Dock" IsEnabled="False" />
-                    <MenuItem Header="Hide" IsEnabled="False" />
-                    <MenuItem Header="Auto Hide All" IsEnabled="False" />
-                    <MenuItem Header="Auto Hide" IsEnabled="False" />
-                    <MenuItem Header="Pin Tab" IsEnabled="False" />
-                    <Separator />
-                    <MenuItem Header="New Horizontal Tab Group" IsEnabled="False" />
-                    <MenuItem Header="New Vertical Tab Group" IsEnabled="False" />
+                    <MenuItem Header="Float" IsVisible="False" />
+                    <MenuItem Header="Dock" IsVisible="False" />
+                    <MenuItem Header="Hide" IsVisible="False" />
+                    <MenuItem Header="Auto Hide All" IsVisible="False" />
+                    <MenuItem Header="Auto Hide" IsVisible="False" />
+                    <MenuItem Header="Pin Tab" IsVisible="False" />
+                    <Separator IsVisible="False" />
+                    <MenuItem Header="New Horizontal Tab Group" IsVisible="False" />
+                    <MenuItem Header="New Vertical Tab Group" IsVisible="False" />
                     <MenuItem Header="Reset Window Layout" Command="{Binding ResetLayoutCommand}" />
                     <MenuItem Header="Close All Documents" Command="{Binding CloseAllDocumentsCommand}" />
-                    <Separator />
-                    <MenuItem Header="Windows..." IsEnabled="False" />
+                    <Separator IsVisible="False" />
+                    <MenuItem Header="Windows..." IsVisible="False" />
                 </MenuItem>
 
-                <MenuItem Header="_Help">
-                    <MenuItem Header="_About RetroPLC IDE" Click="About_OnClick" />
+                <MenuItem Header="_Help" IsVisible="False">
+                    <MenuItem Header="_About RetroPLC IDE" Click="About_OnClick"/>
                 </MenuItem>
             </Menu>
 
@@ -288,32 +289,6 @@
                                     TextPlacement="Down"
                                     GrayscaleIcons="True">
                 <commonControls:RebarHandle />
-                <commonControls:ToolBarButton Text="Go Online"
-                                              LargeIcon="{x:Static icons:Se98Icons+Devices+Size24.NetworkWired}"
-                                              SmallIcon="{x:Static icons:Se98Icons+Devices+Size16.NetworkWired}"
-                                              Command="{Binding GoOnlineCommand}" />
-                <commonControls:ToolBarButton Text="Go Offline"
-                                              LargeIcon="{x:Static icons:Se98Icons+Devices+Size24.NetworkWiredDisconnected}"
-                                              SmallIcon="{x:Static icons:Se98Icons+Devices+Size16.NetworkWiredDisconnected}"
-                                              Command="{Binding GoOfflineCommand}" />
-                <commonControls:ToolBarButton Text="Login"
-                                              LargeIcon="{x:Static icons:Se98Icons+Apps+Size24.PreferencesSystemLogin}"
-                                              SmallIcon="{x:Static icons:Se98Icons+Apps+Size16.PreferencesSystemLogin}"
-                                              Command="{Binding LoginCommand}" />
-                <Separator />
-                <commonControls:ToolBarButton Text="Run"
-                                              LargeIcon="{x:Static icons:Se98Icons+Actions+Size24.MediaPlaybackStart}"
-                                              SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.MediaPlaybackStart}"
-                                              Command="{Binding RunCommand}" />
-                <commonControls:ToolBarButton Text="Stop"
-                                              LargeIcon="{x:Static icons:Se98Icons+Actions+Size24.MediaPlaybackStop}"
-                                              SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.MediaPlaybackStop}"
-                                              Command="{Binding StopCommand}" />
-                <commonControls:ToolBarButton Text="Reset"
-                                              LargeIcon="{x:Static icons:Se98Icons+Actions+Size24.ViewRefresh}"
-                                              SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.ViewRefresh}"
-                                              Command="{Binding ResetPlcCommand}" />
-                <Separator />
                 <commonControls:ToolBarButton Text="Verify"
                                               LargeIcon="{x:Static icons:Se98Icons+Actions+Size24.GtkSpellCheck}"
                                               SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.GtkSpellCheck}"
@@ -339,7 +314,8 @@
                 <commonControls:ToolBarButton Text="About"
                                               LargeIcon="{x:Static icons:Se98Icons+Actions+Size24.HelpAbout}"
                                               SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.HelpAbout}"
-                                              Click="About_OnClick" />
+                                              Click="About_OnClick"
+                                              IsVisible="False" />
             </commonControls:ToolBar>
 
             <Separator />
@@ -366,7 +342,7 @@
                                        FontFamily="{DynamicResource {x:Static commonControls:NonClientMetrics.CaptionFontKey}}"
                                        FontSize="{DynamicResource {x:Static commonControls:NonClientMetrics.CaptionFontSizeKey}}"
                                        FontWeight="Bold"
-                                       Foreground="{DynamicResource {x:Static commonControls:SystemColors.ActiveCaptionTextBrushKey}}"
+                                       Foreground="{DynamicResource RetroPLC.WelcomeCaptionTextBrush}"
                                        Text="Welcome to RetroPLC IDE" />
                         </Border>
 
@@ -406,17 +382,6 @@
         <commonControls:StatusBar Grid.Row="2"
                                   Height="{DynamicResource RetroPLC.Shell.StatusBarHeight}"
                                   Margin="0,2,0,0">
-            <commonControls:StatusBarItem commonControls:StatusBar.Size="2*">
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock Margin="2,0,6,0"
-                               VerticalAlignment="Center"
-                               FontWeight="Bold"
-                               Text="Target:" />
-                    <TextBlock VerticalAlignment="Center"
-                               Text="PLC_1 [192.168.0.10]" />
-                </StackPanel>
-            </commonControls:StatusBarItem>
-
             <commonControls:StatusBarItem commonControls:StatusBar.Size="3*">
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Margin="2,0,6,0"

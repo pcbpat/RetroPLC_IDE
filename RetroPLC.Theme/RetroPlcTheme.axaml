@@ -12,11 +12,14 @@
             <ResourceDictionary.ThemeDictionaries>
                 <!-- RetroPLC.Light currently uses the unmodified Classic palette.
                      This dictionary is the extension point for future light overrides. -->
-                <ResourceDictionary x:Key="{x:Static theme:ThemeVariants.Light}" />
+                <ResourceDictionary x:Key="{x:Static theme:ThemeVariants.Light}">
+                    <SolidColorBrush x:Key="RetroPLC.WelcomeCaptionTextBrush" Color="#000000" />
+                </ResourceDictionary>
 
                 <!-- Missing resources fall back through RetroPLC.Dark's parent,
                      ClassicTheme.Classic, and then Avalonia's Light variant. -->
                 <ResourceDictionary x:Key="{x:Static theme:ThemeVariants.Dark}">
+                    <SolidColorBrush x:Key="RetroPLC.WelcomeCaptionTextBrush" Color="#FFFFFF" />
                     <Color x:Key="{x:Static common:SystemColors.ActiveBorderColorKey}">#484848</Color>
                     <Color x:Key="{x:Static common:SystemColors.ActiveCaptionColorKey}">#000073</Color>
                     <Color x:Key="{x:Static common:SystemColors.ActiveCaptionTextColorKey}">#FFFFFF</Color>
@@ -176,6 +179,10 @@
     <Style Selector="MenuItem">
         <Setter Property="Height" Value="{DynamicResource RetroPLC.Shell.MenuItemHeight}" />
         <Setter Property="Padding" Value="{DynamicResource RetroPLC.Shell.MenuItemPadding}" />
+    </Style>
+    <Style Selector="ContextMenu MenuItem">
+        <Setter Property="Foreground"
+                Value="{DynamicResource {x:Static common:SystemColors.WindowTextBrushKey}}" />
     </Style>
     <Style Selector="MenuItem:separator">
         <Setter Property="Height" Value="{DynamicResource RetroPLC.Shell.MenuSeparatorHeight}" />

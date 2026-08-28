@@ -4,11 +4,12 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Avalonia.Media;
 using RetroPLC.LanguageServerHost;
 using RetroPLC.Icons;
 using Dock.Model.Mvvm.Controls;
-using RetroPLC.Shell.Language;
 using RetroPLC.Shell.Models;
 
 namespace RetroPLC.Shell.ViewModels.Docking;
@@ -24,6 +25,9 @@ public sealed class DevicesViewModel : Tool
     private readonly Action<string>? _addConfiguration;
     private readonly Action<NewResourceDefinition, string>? _addResource;
     private readonly Action<NewTaskDefinition, string, string>? _addTask;
+    private readonly Func<StrucppLocation, CancellationToken,
+        Task<StrucppPrepareRenameResult?>>? _prepareRename;
+    private readonly Func<StrucppLocation, string, CancellationToken, Task<int>>? _rename;
     private readonly Dictionary<string, IReadOnlyList<StrucppDocumentSymbol>> _documentSymbols =
         new(StringComparer.OrdinalIgnoreCase);
     private ProjectDocument? _currentProject;
@@ -39,7 +43,10 @@ public sealed class DevicesViewModel : Tool
         Action<StrucppLocation>? navigateToLocation = null,
         Action<string>? addConfiguration = null,
         Action<NewResourceDefinition, string>? addResource = null,
-        Action<NewTaskDefinition, string, string>? addTask = null)
+        Action<NewTaskDefinition, string, string>? addTask = null,
+        Func<StrucppLocation, CancellationToken,
+            Task<StrucppPrepareRenameResult?>>? prepareRename = null,
+        Func<StrucppLocation, string, CancellationToken, Task<int>>? rename = null)
     {
         _openDocument = openDocument;
         _navigateToLocation = navigateToLocation;
@@ -50,6 +57,8 @@ public sealed class DevicesViewModel : Tool
         _addConfiguration = addConfiguration;
         _addResource = addResource;
         _addTask = addTask;
+        _prepareRename = prepareRename;
+        _rename = rename;
         Nodes = [];
     }
 
@@ -476,6 +485,34 @@ public sealed class DevicesViewModel : Tool
     public void ImportCodesysLibrary(CodesysLibraryImport import) =>
         (_importCodesysLibrary ?? throw new InvalidOperationException("The project is not available."))(import);
 
+    public Task<StrucppPrepareRenameResult?> PrepareRenameAsync(
+        DeviceTreeNode node,
+        CancellationToken cancellationToken = default)
+    {
+        if (!node.SupportsLanguageServerRename || node.Location is not { } location)
+            return Task.FromResult<StrucppPrepareRenameResult?>(null);
+
+        return (_prepareRename ?? throw new InvalidOperationException(
+            "The STruC++ language server is not available."))(
+            location,
+            cancellationToken);
+    }
+
+    public Task<int> RenameAsync(
+        DeviceTreeNode node,
+        string newName,
+        CancellationToken cancellationToken = default)
+    {
+        if (!node.SupportsLanguageServerRename || node.Location is not { } location)
+            return Task.FromResult(0);
+
+        return (_rename ?? throw new InvalidOperationException(
+            "The STruC++ language server is not available."))(
+            location,
+            newName,
+            cancellationToken);
+    }
+
     private static IReadOnlyList<DeviceTreeNode> CreateLibraryNodes() =>
         StrucppToolchain.GetBundledLibraries()
             .Select(library => new DeviceTreeNode(
@@ -617,9 +654,6 @@ public sealed class DevicesViewModel : Tool
         ProjectNodeDefinition definition,
         string projectDirectory)
     {
-        if (IsConfigurationPath(definition.FilePath))
-            return [CreateConfigurationNode(definition, projectDirectory)];
-
         var symbolNodes = CreateDocumentSymbolNodes(definition, projectDirectory);
         return symbolNodes.Count > 0
             ? symbolNodes
@@ -634,159 +668,11 @@ public sealed class DevicesViewModel : Tool
         return normalized.StartsWith("ProjectFiles/Configurations/", StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>
-    /// Builds the project-tree node for a CONFIGURATION source file. The
-    /// STruC++ language server reports no document symbols for configuration
-    /// files, so the CONFIGURATION / RESOURCE / TASK / PROGRAM-instance
-    /// structure is parsed from the source directly and rendered as transient
-    /// children (Global Variables, Resources, Tasks, Program Instances).
-    /// </summary>
-    private DeviceTreeNode CreateConfigurationNode(
-        ProjectNodeDefinition definition,
-        string projectDirectory)
-    {
-        var children = new List<DeviceTreeNode>();
-
-        if (definition.FilePath is { } relativePath)
-        {
-            var fullPath = Path.GetFullPath(Path.Combine(
-                projectDirectory,
-                relativePath.Replace('/', Path.DirectorySeparatorChar)));
-            if (File.Exists(fullPath))
-            {
-                var configurations = StConfigurationParser.Parse(File.ReadAllText(fullPath));
-                // A file normally holds one CONFIGURATION block. Each parsed
-                // block contributes its Global Variables and Resources folders
-                // directly under the file node, matching the target tree:
-                // Configuration -> { Global Variables, Resources -> Resource ->
-                // { Tasks, Program Instances } }.
-                foreach (var configuration in configurations)
-                {
-                    children.AddRange(CreateConfigurationFolders(
-                        configuration,
-                        relativePath,
-                        fullPath));
-                }
-            }
-        }
-
-        return new DeviceTreeNode(
-            GetProjectTreeNodeDisplayName(definition),
-            DeviceIcons.Get(definition.Icon),
-            children,
-            definition.IsExpanded,
-            definition.FilePath,
-            definition.LibraryFileName,
-            kind: definition.Kind);
-    }
-
-    private static IReadOnlyList<DeviceTreeNode> CreateConfigurationFolders(
-        StConfigurationSymbol configuration,
-        string relativePath,
-        string fullPath)
-    {
-        var globalVariables = configuration.Children
-            .Where(child => child.Kind == StConfigurationSymbolKinds.GlobalVariable)
-            .Select(symbol => CreateConfigurationSymbolNode(
-                symbol,
-                relativePath,
-                fullPath,
-                DeviceIcons.Settings))
-            .ToList();
-        var resources = configuration.Children
-            .Where(child => child.Kind == StConfigurationSymbolKinds.Resource)
-            .Select(symbol => CreateResourceNode(symbol, relativePath, fullPath))
-            .ToList();
-
-        return
-        [
-            new DeviceTreeNode(
-                "Global Variables",
-                DeviceIcons.Globe,
-                globalVariables,
-                false,
-                isTransient: true),
-            new DeviceTreeNode(
-                "Resources",
-                DeviceIcons.Controller,
-                resources,
-                true,
-                isTransient: true)
-        ];
-    }
-
-    private static DeviceTreeNode CreateResourceNode(
-        StConfigurationSymbol resource,
-        string relativePath,
-        string fullPath)
-    {
-        var tasks = resource.Children
-            .Where(child => child.Kind == StConfigurationSymbolKinds.Task)
-            .Select(task => new DeviceTreeNode(
-                task.DisplayName,
-                DeviceIcons.Task,
-                [],
-                true,
-                filePath: relativePath,
-                location: new StrucppLocation(fullPath, task.Range),
-                isTransient: true,
-                kind: StConfigurationSymbolKinds.Task))
-            .ToList();
-        // PROGRAM instances attached to a task with WITH are modeled as
-        // children of the TASK symbol by the parser; standalone instances
-        // live directly on the resource. Both belong to the resource-level
-        // "Program Instances" folder.
-        var programs = resource.Children
-            .Where(child => child.Kind == StConfigurationSymbolKinds.ProgramInstance)
-            .Concat(resource.Children
-                .Where(child => child.Kind == StConfigurationSymbolKinds.Task)
-                .SelectMany(task => task.Children))
-            .Select(program => CreateConfigurationSymbolNode(
-                program,
-                relativePath,
-                fullPath,
-                DeviceIcons.Program))
-            .ToList();
-        var children = new List<DeviceTreeNode>
-        {
-            new("Tasks", DeviceIcons.Task, tasks, true, isTransient: true),
-            new("Program Instances", DeviceIcons.Program, programs, true, isTransient: true)
-        };
-
-        return new DeviceTreeNode(
-            resource.DisplayName,
-            DeviceIcons.Controller,
-            children,
-            true,
-            filePath: relativePath,
-            location: new StrucppLocation(fullPath, resource.Range),
-            isTransient: true,
-            kind: StConfigurationSymbolKinds.Resource);
-    }
-
-    private static DeviceTreeNode CreateConfigurationSymbolNode(
-        StConfigurationSymbol symbol,
-        string relativePath,
-        string fullPath,
-        IImage icon) =>
-        new(
-            symbol.DisplayName,
-            icon,
-            [],
-            false,
-            filePath: relativePath,
-            location: new StrucppLocation(fullPath, symbol.Range),
-            isTransient: true);
-
     private IReadOnlyList<DeviceTreeNode> CreateDocumentSymbolNodes(
         ProjectNodeDefinition definition,
         string projectDirectory)
     {
-        // CONFIGURATION, RESOURCE and TASK nodes are modeled in the manifest
-        // (the language server reports no document symbols for them) so they
-        // render their declared children instead of LSP symbol nodes.
-        if (definition.Kind is not null ||
-            definition.FilePath is not { } relativePath ||
+        if (definition.FilePath is not { } relativePath ||
             !IsStructuredTextPath(relativePath))
         {
             return [];
@@ -819,7 +705,8 @@ public sealed class DevicesViewModel : Tool
             false,
             filePath: relativePath,
             location: new StrucppLocation(fullPath, symbol.SelectionRange),
-            isTransient: true);
+            isTransient: true,
+            supportsLanguageServerRename: true);
 
     /// <summary>
     /// POUs and Interfaces render as bare identifiers (the declaration kind
@@ -1062,7 +949,8 @@ public sealed class DeviceTreeNode(
     string? libraryFileName = null,
     StrucppLocation? location = null,
     bool isTransient = false,
-    string? kind = null)
+    string? kind = null,
+    bool supportsLanguageServerRename = false)
 {
     public string Name { get; } = name;
     public IImage Icon { get; } = icon;
@@ -1073,6 +961,7 @@ public sealed class DeviceTreeNode(
     public StrucppLocation? Location { get; } = location;
     public bool IsTransient { get; } = isTransient;
     public string? Kind { get; } = kind;
+    public bool SupportsLanguageServerRename { get; } = supportsLanguageServerRename;
 
     public ProjectNodeDefinition ToDefinition() => new()
     {

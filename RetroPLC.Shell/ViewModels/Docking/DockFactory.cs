@@ -68,7 +68,9 @@ public sealed class DockFactory : Factory
                 NavigateToLocation,
                 AddConfiguration,
                 AddResource,
-                AddTask)
+                AddTask,
+                PrepareProjectTreeRenameAsync,
+                RenameProjectTreeSymbolAsync)
             { Id = "Project", Title = "Project", CanPin = true };
         _projectTool = tool1;
         if (_currentProject is not null && _projectDirectory is not null)
@@ -1191,6 +1193,21 @@ public sealed class DockFactory : Factory
             cancellationToken);
     }
 
+    private async Task<StrucppPrepareRenameResult?> PrepareProjectTreeRenameAsync(
+        StrucppLocation location,
+        CancellationToken cancellationToken)
+    {
+        if (!_languageClient.IsRunning || !IsNavigableLocation(location))
+            return null;
+
+        await SynchronizeOpenDocumentAsync(location.FilePath, cancellationToken);
+        return await _languageClient.PrepareRenameAsync(
+            location.FilePath,
+            location.Range.Start.Line,
+            location.Range.Start.Character,
+            cancellationToken);
+    }
+
     private async Task<bool> GoToDocumentDefinitionAsync(
         DocumentViewModel document,
         int line,
@@ -1333,14 +1350,91 @@ public sealed class DockFactory : Factory
             document.Document.Text,
             document.Version,
             cancellationToken);
-        var workspaceEdit = await _languageClient.RenameAsync(
+        return await RenameSymbolAtLocationAsync(
             document.FilePath,
+            line,
+            character,
+            newName,
+            cancellationToken);
+    }
+
+    private async Task<int> RenameProjectTreeSymbolAsync(
+        StrucppLocation location,
+        string newName,
+        CancellationToken cancellationToken)
+    {
+        if (!_languageClient.IsRunning || !IsNavigableLocation(location))
+            return 0;
+
+        await SynchronizeOpenDocumentAsync(location.FilePath, cancellationToken);
+        return await RenameSymbolAtLocationAsync(
+            location.FilePath,
+            location.Range.Start.Line,
+            location.Range.Start.Character,
+            newName,
+            cancellationToken);
+    }
+
+    private async Task SynchronizeOpenDocumentAsync(
+        string filePath,
+        CancellationToken cancellationToken)
+    {
+        var openDocument = Find(dockable => dockable is DocumentViewModel)
+            .OfType<DocumentViewModel>()
+            .FirstOrDefault(candidate => string.Equals(
+                candidate.FilePath,
+                Path.GetFullPath(filePath),
+                StringComparison.OrdinalIgnoreCase));
+        if (openDocument is null)
+            return;
+
+        await _languageClient.ChangeDocumentAsync(
+            openDocument.FilePath,
+            openDocument.Document.Text,
+            openDocument.Version,
+            cancellationToken);
+    }
+
+    private async Task<int> RenameSymbolAtLocationAsync(
+        string filePath,
+        int line,
+        int character,
+        string newName,
+        CancellationToken cancellationToken)
+    {
+        if (!_languageClient.IsRunning || _projectDirectory is null)
+            return 0;
+
+        var preparation = await _languageClient.PrepareRenameAsync(
+            filePath,
+            line,
+            character,
+            cancellationToken);
+        if (preparation is null)
+            return 0;
+
+        var workspaceEdit = await _languageClient.RenameAsync(
+            filePath,
             line,
             character,
             newName,
             cancellationToken);
         if (workspaceEdit is null)
             return 0;
+
+        var editsSelectedOccurrence = workspaceEdit.Changes.Any(change =>
+            string.Equals(
+                Path.GetFullPath(change.Key),
+                Path.GetFullPath(filePath),
+                StringComparison.OrdinalIgnoreCase) &&
+            change.Value.Any(edit =>
+                edit.Range == preparation.Range &&
+                string.Equals(edit.NewText, newName, StringComparison.Ordinal)));
+        if (!editsSelectedOccurrence)
+        {
+            throw new InvalidOperationException(
+                "The language server returned an incomplete rename and no files were changed.");
+        }
 
         return await ApplyWorkspaceEditAsync(
             workspaceEdit,
