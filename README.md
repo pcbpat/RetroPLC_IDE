@@ -12,10 +12,14 @@ The example project shown in the video can be found in the `TestProj` folder of 
 
 - .NET 10 SDK
 - Git
-- A supported 64-bit Linux, macOS, or Windows environment
+- Linux x86_64 or macOS Apple Silicon for the current `setup.sh`
+- On Linux/macOS: `curl`, `tar`, standard POSIX shell utilities, and either `sha256sum` or `shasum`
 
-Node.js is needed only to build the STruC++ command-line and language-server
-tools. Their generated executables are intentionally not stored in Git.
+Node.js, npm, Python, west, CMake, Ninja, DTC and the Zephyr SDK do not need to
+be installed system-wide. The setup script manages the required versions.
+
+Windows remains a supported target for the Avalonia application, but the
+Windows bootstrap script is not included yet.
 
 ## Project motivation
 
@@ -25,18 +29,18 @@ The main goal was to create a cross-platform, open-source alternative to the Ard
 
 RetroPLC differs from currently available solutions in its architecture, runtime environment, debugging approach, and device-management workflow. To help determine which development environment best fits your use case, the following table compares RetroPLC with two other available solutions: Arduino PLC IDE and OpenPLC Editor.
 
-| Feature                             | Arduino PLC IDE                | OpenPLC Editor v4                 | RetroPLC IDE                         |
-| ----------------------------------- | ------------------------------ | -------------------------------   | ------------------------------------ |
-| **Supported platforms**             | Windows                        | Windows, Linux, macOS             | Windows, Linux, macOS                |
-| **License**                         | Closed source / Proprietary    | Open source / GPL-3.0             | Open source / GPL-3.0                |
-| **Debugging**                       | Live debug, watch, breakpoints | Monitoring & forcing via serial   | Monitoring & forcing via `mcumgrctl` |
-| **Ecosystem / technology stack**    | Closed-source                  | TypeScript / Electron, STruC++    | C# / Avalonia, STruC++               |
-| **Look and feel**                   | Classic engineering tool       | Modern web-style UI               | Classic engineering tool             |
-| **Supported IEC 61131-3 languages** | LD, FBD, ST, SFC, IL           | LD, FBD, ST, SFC, IL              | ST                                   |
-| **Bootloader**                      | Arduino MCUboot                | Arduino MCUboot                   | Upstream MCUboot                     |
-| **Build system**                    | `arduino-cli`                  | `arduino-cli`                     | `west` / CMake                       |
-| **Device management and flashing**  | `arduino-cli`                  | `arduino-cli`                     | `mcumgrctl` / SMP protocol           |
-| **Runtime**                         | Arduino / Mbed                 | Arduino / Mbed, STruC++ runtime   | Zephyr-native, STruC++ runtime       |
+| Feature                             | Arduino PLC IDE                | OpenPLC Editor v4               | RetroPLC IDE                         |
+| ----------------------------------- | ------------------------------ | ------------------------------- | ------------------------------------ |
+| **Supported platforms**             | Windows                        | Windows, Linux, macOS           | Windows, Linux, macOS                |
+| **License**                         | Closed source / Proprietary    | Open source / GPL-3.0           | Open source / GPL-3.0                |
+| **Debugging**                       | Live debug, watch, breakpoints | Monitoring & forcing via serial | Monitoring & forcing via `mcumgrctl` |
+| **Ecosystem / technology stack**    | Closed-source                  | TypeScript / Electron, STruC++  | C# / Avalonia, STruC++               |
+| **Look and feel**                   | Classic engineering tool       | Modern web-style UI             | Classic engineering tool             |
+| **Supported IEC 61131-3 languages** | LD, FBD, ST, SFC, IL           | LD, FBD, ST, SFC, IL            | ST                                   |
+| **Bootloader**                      | Arduino MCUboot                | Arduino MCUboot                 | Upstream MCUboot                     |
+| **Build system**                    | `arduino-cli`                  | `arduino-cli`                   | `west` / CMake                       |
+| **Device management and flashing**  | `arduino-cli`                  | `arduino-cli`                   | `mcumgrctl` / SMP protocol           |
+| **Runtime**                         | Arduino / Mbed                 | Arduino / Mbed, STruC++ runtime | Zephyr-native, STruC++ runtime       |
 
 > [!CAUTION]
 > RetroPLC requires replacing the Arduino Opta's factory bootloader with upstream MCUboot.
@@ -48,13 +52,15 @@ RetroPLC differs from currently available solutions in its architecture, runtime
 
 ## Getting started
 
-Clone the repository and initialize its submodules:
+Clone the repository:
 
 ```shell
-git submodule update --init --recursive
+git clone https://github.com/pcbpat/RetroPLC_IDE.git
+cd RetroPLC_IDE
 ```
 
-Run the setup script for your platform.
+The setup script initializes the required Git submodules automatically, so a
+manual `git submodule update` is not required.
 
 On Linux/macOS:
 
@@ -62,19 +68,15 @@ On Linux/macOS:
 ./setup.sh
 ```
 
-On Windows:
+The setup script initializes and configures:
 
-```powershell
-.\setup.ps1
-```
-
-The setup scripts installs and configures following dependencies:
-
-- pinned RetroPLC development dependencies
-- RetroPLC Runtime manifest, Zephyr workspace, and required Arduino Opta modules
-- required Zephyr Python tooling, including `west`, CMake, and Ninja
-- private Zephyr SDK, DTC host tool, and ARM toolchain
-- pinned STruC++ compiler and language-server dependencies
+- `RetroPLC.Icons/Win98SE` and `external/STruCpp` as pinned Git submodules
+- private Node.js and Python runtimes
+- `west`, CMake and Ninja inside the RetroPLC Python environment
+- the STruC++ compiler, bundled libraries and language server built directly from the local `external/STruCpp` submodule
+- the RetroPLC Runtime checkout and a private Zephyr west workspace
+- the required Zephyr modules for the Arduino Opta
+- a private Zephyr SDK under `Tools/toolchain/zephyr-sdk`, including the `arm-zephyr-eabi` toolchain and DTC host tool
 - `mcumgrctl` for firmware updates and device management
 
 Restore and build the IDE:
@@ -97,26 +99,83 @@ dotnet run --project RetroPLC.Shell/RetroPLC.Shell.csproj
 - `RetroPLC.BuildHost` — compiler and firmware build orchestration.
 - `RetroPLC.Icons` — generated Windows 98 SE-style icon catalog.
 - `RetroPLC.Theme` — shared Avalonia theme and controls.
-- `external/STruCpp` — STruC++ source submodule pinned to version 0.6.3.
+- `external/STruCpp` — pinned STruC++ source submodule used directly by the setup process.
+- `Tools` — setup-managed runtimes, toolchains and Zephyr workspace.
 
-On Linux and macOS, the setup-managed runtimes, toolchains, STruC++ checkout,
-language server, compiler, RetroPLC Runtime checkout, Zephyr workspace, Zephyr
-SDK, DTC, ARM toolchain, and `mcumgrctl` are installed under the solution-level
-`Tools` directory. The hosts resolve tools from that directory at runtime;
-generated dependencies are not copied into application build output. A `.west`
-directory or Zephyr SDK outside `Tools` is not used by the IDE.
+`external/STruCpp` is the canonical STruC++ source checkout. `setup.sh` builds
+the compiler, libraries and language server in that local submodule and creates
+`Tools/strucpp` as a symlink to it so the existing RetroPLC host paths continue
+to work without maintaining a second STruC++ clone.
+
+The Structured Text editor uses the TextMate grammar stored in
+`RetroPLC.Shell/Assets/Syntax/st.tmLanguage.json`. It is not a Tree-sitter
+grammar.
+
+On Linux and macOS, downloaded runtimes and toolchains are contained below the
+solution-level `Tools` directory:
+
+```text
+Tools/
+├── mcumgr/
+├── strucpp -> ../external/STruCpp
+└── toolchain/
+    ├── node/
+    ├── python/
+    ├── venv/
+    ├── zephyr-sdk/
+    └── zephyr-workspace/
+        ├── .west/
+        ├── RetroPLC_Runtime/
+        ├── zephyr/
+        ├── bootloader/
+        ├── modules/
+        └── tools/
+```
+
+The Zephyr SDK is always installed privately into
+`Tools/toolchain/zephyr-sdk`. An SDK installed elsewhere on the host is not
+discovered or reused.
+
+The private west workspace also lives below `Tools`. A `.west` directory in a
+parent directory, for example from an older `~/RetroPLC` workspace, is not used
+by the IDE.
+
+## Updating STruC++
+
+STruC++ is versioned through the `external/STruCpp` Git submodule. Updating
+RetroPLC to another STruC++ release therefore means updating the submodule
+pointer to the desired upstream commit or tag and committing that pointer in
+the RetroPLC repository.
+
+For example:
+
+```shell
+cd external/STruCpp
+git fetch --tags
+git checkout v0.6.4
+cd ../..
+git add external/STruCpp
+git commit -m "Update STruC++ to v0.6.4"
+```
+
+Run `./setup.sh` afterwards. The script detects the changed STruC++ commit and
+rebuilds the compiler, libraries and language server from the local submodule.
 
 ## Rebuilding dependencies
 
-Run `./setup.sh` whenever the generated STruC++ tools are missing or need to be
-initially built.
+Run `./setup.sh` whenever managed dependencies are missing or after changing a
+pinned dependency such as the STruC++ submodule.
 
-Before the Runtime repository is public, maintainers with SSH access can test
-the complete setup using:
+Removing `Tools` forces a clean recreation of the managed toolchain and Zephyr
+workspace:
 
 ```shell
-RETROPLC_RUNTIME_REPOSITORY=git@github.com:pcbpat/RetroPLC_Runtime.git ./setup.sh
+rm -rf Tools
+./setup.sh
 ```
+
+This does not remove the Git submodules under `external/STruCpp` or
+`RetroPLC.Icons/Win98SE`.
 
 ## License
 
@@ -144,9 +203,9 @@ assets remain under their respective licenses.
 - [OmniSharp language protocol libraries](https://github.com/OmniSharp/csharp-language-server-protocol)
   — the Language Server Protocol client implementation.
 - [Inter](https://github.com/rsms/inter) — the bundled application font.
-- [STruC++](https://github.com/Autonomy-Logic/STruCpp/tree/development) — the
-  Structured Text CLI compiler, language server, and syntax resources.
-- [Zephyr](https://github.com/zephyrproject-rtos/zephyr) - the embedded firmware
-  platform and real time operating system. 
-- [mcumgrctl](https://github.com/Finomnis/mcumgr-toolkit/) - the command line tool to manage the running PLC
-via Simple Management Protocol (SMP) 
+- [STruC++](https://github.com/Autonomy-Logic/STruCpp) — the Structured Text
+  compiler, language server, libraries and syntax resources.
+- [Zephyr](https://github.com/zephyrproject-rtos/zephyr) — the embedded firmware
+  platform and real-time operating system.
+- [mcumgrctl](https://github.com/Finomnis/mcumgr-toolkit/) — the command-line
+  tool used to manage the running PLC through Simple Management Protocol (SMP).

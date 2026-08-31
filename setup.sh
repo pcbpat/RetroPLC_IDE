@@ -3,15 +3,17 @@
 #
 # RetroPLC toolchain bootstrap for Linux and macOS.
 #
-# Managed by this script:
-#   - private Node.js runtime (for STruC++ compiler + language server)
-#   - STruC++ source checkout and compiled JavaScript tools
-#   - private CPython 3.12.14 runtime
-#   - private Python virtual environment
+# Source dependencies initialized by this script:
+#   - RetroPLC.Icons/Win98SE Git submodule
+#   - external/STruCpp Git submodule
+#
+# Managed under RetroPLC_IDE/Tools:
+#   - private Node.js runtime
+#   - private CPython runtime + venv
 #   - west, CMake and Ninja
-#   - pinned Zephyr workspace + west modules
-#   - Zephyr Python packages
-#   - private Zephyr SDK with arm-zephyr-eabi toolchain and host tools
+#   - built STruC++ compiler/LSP access via Tools/strucpp -> external/STruCpp
+#   - RetroPLC Runtime + private Zephyr west workspace
+#   - private Zephyr SDK with arm-zephyr-eabi toolchain and host tools/DTC
 #   - mcumgrctl
 #
 # Remaining host dependencies:
@@ -19,8 +21,9 @@
 #   - curl
 #   - tar
 #   - basic POSIX shell utilities
+#   - sha256sum or shasum
 #
-# Windows should use setup.ps1 instead.
+# Windows bootstrap is not implemented yet.
 
 set -euo pipefail
 
@@ -28,20 +31,15 @@ set -euo pipefail
 # Pinned versions
 # -----------------------------------------------------------------------------
 
-readonly STRUCPP_VERSION="0.6.3"
-readonly STRUCPP_REPOSITORY="https://github.com/Autonomy-Logic/STruCpp.git"
-
 readonly RETROPLC_RUNTIME_REVISION="${RETROPLC_RUNTIME_REVISION:-main}"
 readonly RETROPLC_RUNTIME_REPOSITORY="${RETROPLC_RUNTIME_REPOSITORY:-https://github.com/pcbpat/RetroPLC_Runtime.git}"
 
 readonly MCUMGR_VERSION="0.16.0"
 readonly MCUMGR_REPOSITORY="Finomnis/mcumgr-toolkit"
 
-# STruC++ requires Node.js >= 22. RetroPLC uses one exact private runtime.
+# STruC++ currently requires Node.js >= 22.
 readonly NODE_VERSION="22.23.2"
 
-# python-build-standalone release. RetroPLC pins the exact CPython 3.12.14 asset
-# from this immutable release rather than depending on a system Python.
 readonly PYTHON_VERSION="3.12.14"
 readonly PYTHON_BUILD_RELEASE="20260825"
 readonly PYTHON_BUILD_REPOSITORY="astral-sh/python-build-standalone"
@@ -50,12 +48,6 @@ readonly WEST_VERSION="1.5.0"
 readonly CMAKE_VERSION="3.31.10"
 readonly NINJA_VERSION="1.13.0"
 
-# Exact Zephyr revision validated with the RetroPLC Opta runtime. The v4.4.0
-# tag predates an STM32H7 devicetree fix required by the runtime's two-bank
-# flash overlay and fails while configuring MCUboot.
-readonly ZEPHYR_REVISION="${ZEPHYR_REVISION:-da0718ca0d52d4f3e3653ead4f8d3a907778ae0b}"
-readonly ZEPHYR_REPOSITORY="https://github.com/zephyrproject-rtos/zephyr.git"
-
 # -----------------------------------------------------------------------------
 # Paths
 # -----------------------------------------------------------------------------
@@ -63,7 +55,10 @@ readonly ZEPHYR_REPOSITORY="https://github.com/zephyrproject-rtos/zephyr.git"
 readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly TOOLS_DIR="${SCRIPT_DIR}/Tools"
 
-readonly STRUCPP_DIR="${TOOLS_DIR}/strucpp"
+readonly STRUCPP_SOURCE_DIR="${SCRIPT_DIR}/external/STruCpp"
+readonly STRUCPP_TOOL_DIR="${TOOLS_DIR}/strucpp"
+readonly STRUCPP_MARKER="${TOOLS_DIR}/.retroplc-strucpp-build"
+
 readonly MCUMGR_DIR="${TOOLS_DIR}/mcumgr"
 
 readonly TOOLCHAIN_DIR="${TOOLS_DIR}/toolchain"
@@ -82,7 +77,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-readonly TOTAL_STEPS=10
+readonly TOTAL_STEPS=11
 
 if [[ -t 1 ]]; then
     readonly COLOR_CYAN=$'\033[1;36m'
@@ -117,12 +112,12 @@ info() {
 }
 
 # -----------------------------------------------------------------------------
-# Bootstrap dependencies
+# Host dependencies
 # -----------------------------------------------------------------------------
 
 heading 1 "Checking host dependencies"
 
-for command in git curl tar find awk sed head tr cp chmod mkdir mktemp rm; do
+for command in git curl tar find awk sed head tr cp chmod mkdir mktemp rm ln cat uname; do
     if ! command -v "${command}" >/dev/null 2>&1; then
         die "Required host command not found: ${command}"
     fi
@@ -197,13 +192,13 @@ case "${platform}:${architecture}" in
         mcumgr_sha256="a9cbfb44cfc0852db8c2713b1255116db5524d02b912fe0ab98aa02e2dccff0"
         ;;
     Linux:aarch64|Linux:arm64)
-        die "Linux ARM64 is not enabled because mcumgr-toolkit ${MCUMGR_VERSION} has no matching prebuilt asset in the existing RetroPLC setup."
+        die "Linux ARM64 is not enabled because mcumgr-toolkit ${MCUMGR_VERSION} has no matching prebuilt release asset."
         ;;
     Darwin:x86_64|Darwin:amd64)
-        die "Intel macOS is not enabled for the managed RetroPLC toolchain. Use Apple Silicon macOS."
+        die "Intel macOS is not enabled because the validated Zephyr SDK and mcumgrctl assets are unavailable for this host."
         ;;
     MINGW*:*|MSYS*:*|CYGWIN*:*)
-        die "Use setup.ps1 on Windows."
+        die "Windows bootstrap is not implemented yet."
         ;;
     *)
         die "Unsupported host platform: ${platform} ${architecture}"
@@ -212,11 +207,39 @@ esac
 
 mkdir -p "${TOOLS_DIR}" "${TOOLCHAIN_DIR}" "${MCUMGR_DIR}"
 
+# Ignore externally configured Zephyr locations. RetroPLC uses only its private
+# workspace and private SDK below Tools.
+unset ZEPHYR_BASE || true
+unset ZEPHYR_SDK_INSTALL_DIR || true
+
+# -----------------------------------------------------------------------------
+# Source submodules
+# -----------------------------------------------------------------------------
+
+heading 2 "Initializing source submodules"
+
+git -C "${SCRIPT_DIR}" rev-parse --show-toplevel >/dev/null 2>&1 || \
+    die "RetroPLC_IDE must be a Git checkout."
+
+git -C "${SCRIPT_DIR}" submodule sync --recursive
+git -C "${SCRIPT_DIR}" submodule update --init --recursive \
+    RetroPLC.Icons/Win98SE \
+    external/STruCpp
+
+[[ -f "${STRUCPP_SOURCE_DIR}/package.json" ]] || \
+    die "The STruC++ submodule was not initialized."
+
+# Preserve the existing RetroPLC tool lookup paths without maintaining a second
+# STruC++ checkout. The compiler, LSP, libs and runtime are used directly from
+# the pinned local submodule.
+rm -rf "${STRUCPP_TOOL_DIR}"
+ln -s "../external/STruCpp" "${STRUCPP_TOOL_DIR}"
+
 # -----------------------------------------------------------------------------
 # Private Node.js runtime
 # -----------------------------------------------------------------------------
 
-heading 2 "Node.js ${NODE_VERSION}"
+heading 3 "Node.js ${NODE_VERSION}"
 
 readonly NODE_ARCHIVE="node-v${NODE_VERSION}-${node_platform}.tar.gz"
 readonly NODE_URL="https://nodejs.org/dist/v${NODE_VERSION}/${NODE_ARCHIVE}"
@@ -260,7 +283,7 @@ fi
 [[ -f "${NPM_CLI}" ]] || die "Bundled npm CLI was not installed with Node.js."
 
 # -----------------------------------------------------------------------------
-# GitHub release helpers (using private Node for JSON parsing)
+# GitHub release helpers
 # -----------------------------------------------------------------------------
 
 github_release_json() {
@@ -278,27 +301,6 @@ github_release_json() {
         --header "User-Agent: RetroPLC-setup" \
         --output "${output}" \
         "https://api.github.com/repos/${repository}/releases/tags/${tag}"
-}
-
-github_asset_name_by_prefix_suffix() {
-    local release_json="$1"
-    local prefix="$2"
-    local suffix="$3"
-
-    "${NODE_BIN}" -e '
-const fs = require("fs");
-const release = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-const prefix = process.argv[2];
-const suffix = process.argv[3];
-const matches = release.assets.filter(
-  asset => asset.name.startsWith(prefix) && asset.name.endsWith(suffix)
-);
-if (matches.length !== 1) {
-  console.error(`Expected exactly one GitHub release asset matching ${prefix}*${suffix}; found ${matches.length}`);
-  process.exit(1);
-}
-process.stdout.write(matches[0].name);
-' "${release_json}" "${prefix}" "${suffix}"
 }
 
 download_github_release_asset() {
@@ -335,16 +337,14 @@ process.stdout.write(`${asset.browser_download_url}|${digest}`);
 
     if [[ "${asset_digest}" == sha256:* ]]; then
         verify_sha256 "${output}" "${asset_digest#sha256:}"
-    else
-        echo "WARNING: GitHub did not provide a SHA-256 digest for ${asset_name}; downloaded asset could not be digest-verified." >&2
     fi
 }
 
 # -----------------------------------------------------------------------------
-# Private CPython 3.12.14
+# Private CPython
 # -----------------------------------------------------------------------------
 
-heading 3 "Python ${PYTHON_VERSION}"
+heading 4 "Python ${PYTHON_VERSION}"
 
 python_is_current=false
 if [[ -x "${PYTHON_DIR}/bin/python3" ]] && \
@@ -376,7 +376,8 @@ if [[ "${python_is_current}" == false ]]; then
     mkdir -p "${PYTHON_DIR}"
     tar -xzf "${python_archive_path}" -C "${PYTHON_DIR}" --strip-components=1
 
-    printf '%s\n' "${PYTHON_BUILD_RELEASE}:${PYTHON_VERSION}" > "${PYTHON_DIR}/.retroplc-python-build"
+    printf '%s\n' "${PYTHON_BUILD_RELEASE}:${PYTHON_VERSION}" > \
+        "${PYTHON_DIR}/.retroplc-python-build"
 fi
 
 readonly PYTHON_BIN="${PYTHON_DIR}/bin/python3"
@@ -390,7 +391,7 @@ python_full_version="$("${PYTHON_BIN}" -c 'import platform; print(platform.pytho
 # Private Python venv + west + CMake + Ninja
 # -----------------------------------------------------------------------------
 
-heading 4 "west ${WEST_VERSION} + CMake ${CMAKE_VERSION} + Ninja ${NINJA_VERSION}"
+heading 5 "west ${WEST_VERSION} + CMake ${CMAKE_VERSION} + Ninja ${NINJA_VERSION}"
 
 readonly VENV_MARKER_VALUE="${PYTHON_BUILD_RELEASE}:${PYTHON_VERSION}:${WEST_VERSION}:${CMAKE_VERSION}:${NINJA_VERSION}"
 readonly VENV_MARKER="${PYTHON_VENV_DIR}/.retroplc-toolchain-version"
@@ -417,7 +418,6 @@ if [[ "${venv_recreate}" == true ]]; then
     printf '%s\n' "${VENV_MARKER_VALUE}" > "${VENV_MARKER}"
 fi
 
-readonly VENV_PYTHON="${PYTHON_VENV_DIR}/bin/python"
 readonly WEST="${PYTHON_VENV_DIR}/bin/west"
 readonly CMAKE="${PYTHON_VENV_DIR}/bin/cmake"
 readonly NINJA="${PYTHON_VENV_DIR}/bin/ninja"
@@ -426,37 +426,30 @@ readonly NINJA="${PYTHON_VENV_DIR}/bin/ninja"
 [[ -x "${CMAKE}" ]] || die "CMake was not installed into the private venv."
 [[ -x "${NINJA}" ]] || die "Ninja was not installed into the private venv."
 
-# Keep subsequent Zephyr commands on RetroPLC-managed host tools.
 export VIRTUAL_ENV="${PYTHON_VENV_DIR}"
 export PATH="${NODE_DIR}/bin:${PYTHON_VENV_DIR}/bin:${PATH}"
 
 # -----------------------------------------------------------------------------
-# STruC++ source checkout + JavaScript compiler/LSP
+# Build STruC++ from the pinned local submodule
 # -----------------------------------------------------------------------------
 
-heading 5 "STruC++ ${STRUCPP_VERSION}"
+heading 6 "Building STruC++ from external/STruCpp"
 
-readonly STRUCPP_MARKER="${STRUCPP_DIR}/.retroplc-build-version"
-readonly STRUCPP_COMPILER="${STRUCPP_DIR}/dist/node/cli.js"
-readonly STRUCPP_SERVER="${STRUCPP_DIR}/vscode-extension/out/server/src/server.js"
-readonly STRUCPP_EXPECTED_COMMIT="80481d1c4c14c58da3a08f2fa00e7990f20a35ce"
+readonly STRUCPP_COMPILER="${STRUCPP_SOURCE_DIR}/dist/node/cli.js"
+readonly STRUCPP_SERVER="${STRUCPP_SOURCE_DIR}/vscode-extension/out/server/src/server.js"
 
-if [[ ! -d "${STRUCPP_DIR}/.git" ]]; then
-    rm -rf "${STRUCPP_DIR}"
-    git clone --filter=blob:none --depth 1 --branch "v${STRUCPP_VERSION}" \
-        "${STRUCPP_REPOSITORY}" "${STRUCPP_DIR}"
-else
-    git -C "${STRUCPP_DIR}" remote set-url origin "${STRUCPP_REPOSITORY}"
-    git -C "${STRUCPP_DIR}" fetch --force --depth 1 origin \
-        "refs/tags/v${STRUCPP_VERSION}:refs/tags/v${STRUCPP_VERSION}"
-    git -C "${STRUCPP_DIR}" checkout --detach --force "v${STRUCPP_VERSION}^{commit}"
-fi
+strucpp_commit="$(git -C "${STRUCPP_SOURCE_DIR}" rev-parse HEAD)"
+strucpp_version="$(
+    "${NODE_BIN}" -e \
+        'const fs=require("fs"); const p=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.stdout.write(p.version);' \
+        "${STRUCPP_SOURCE_DIR}/package.json"
+)"
+strucpp_marker_value="${strucpp_commit}:${NODE_VERSION}"
 
-strucpp_commit="$(git -C "${STRUCPP_DIR}" rev-parse HEAD)"
-[[ "${strucpp_commit}" == "${STRUCPP_EXPECTED_COMMIT}" ]] || \
-    die "Unexpected STruC++ v${STRUCPP_VERSION} commit: ${strucpp_commit}"
+run_npm() {
+    "${NODE_BIN}" "${NPM_CLI}" "$@"
+}
 
-strucpp_marker_value="${STRUCPP_VERSION}:${STRUCPP_EXPECTED_COMMIT}:${NODE_VERSION}"
 strucpp_is_current=false
 if [[ -f "${STRUCPP_COMPILER}" ]] && \
    [[ -f "${STRUCPP_SERVER}" ]] && \
@@ -465,24 +458,17 @@ if [[ -f "${STRUCPP_COMPILER}" ]] && \
     strucpp_is_current=true
 fi
 
-run_npm() {
-    "${NODE_BIN}" "${NPM_CLI}" "$@"
-}
-
 if [[ "${strucpp_is_current}" == false ]]; then
-    info "Building STruC++ compiler and language server from source"
+    info "Building STruC++ compiler, libraries and language server from the local submodule"
 
-    # STruC++ root: compile TypeScript and rebuild bundled .stlib libraries.
     (
-        cd "${STRUCPP_DIR}"
+        cd "${STRUCPP_SOURCE_DIR}"
         run_npm ci --ignore-scripts
         run_npm run build
     )
 
-    # The language-server source lives in upstream's vscode-extension tree,
-    # but RetroPLC does not build, download or extract a VS Code extension.
     (
-        cd "${STRUCPP_DIR}/vscode-extension"
+        cd "${STRUCPP_SOURCE_DIR}/vscode-extension"
         run_npm ci --ignore-scripts
         run_npm run build
     )
@@ -492,21 +478,26 @@ fi
 
 [[ -f "${STRUCPP_COMPILER}" ]] || die "STruC++ compiler JavaScript was not built."
 [[ -f "${STRUCPP_SERVER}" ]] || die "STruC++ language-server JavaScript was not built."
+[[ -d "${STRUCPP_SOURCE_DIR}/libs" ]] || die "STruC++ libraries directory is missing."
+[[ -d "${STRUCPP_SOURCE_DIR}/src/runtime" ]] || die "STruC++ runtime sources are missing."
 
-# Verify the compiler with RetroPLC's bundled Node.js.
-strucpp_reported_version="$("${NODE_BIN}" "${STRUCPP_COMPILER}" --version 2>/dev/null | tail -n 1 | tr -d '\r')"
-[[ "${strucpp_reported_version}" == *"${STRUCPP_VERSION}"* ]] || \
+strucpp_reported_version="$(
+    "${NODE_BIN}" "${STRUCPP_COMPILER}" --version 2>/dev/null | tail -n 1 | tr -d '\r'
+)"
+[[ "${strucpp_reported_version}" == *"${strucpp_version}"* ]] || \
     die "Unexpected STruC++ compiler version output: ${strucpp_reported_version}"
 
-# RetroPLC runtime commands:
-#   Compiler: Tools/toolchain/node/bin/node Tools/strucpp/dist/node/cli.js ...
-#   LSP:      Tools/toolchain/node/bin/node Tools/strucpp/vscode-extension/out/server/src/server.js --stdio
+# Existing RetroPLC hosts can continue resolving:
+#   Tools/strucpp/dist/node/cli.js
+#   Tools/strucpp/vscode-extension/out/server/src/server.js
+#   Tools/strucpp/libs
+# because Tools/strucpp is a symlink to external/STruCpp.
 
 # -----------------------------------------------------------------------------
 # mcumgrctl
 # -----------------------------------------------------------------------------
 
-heading 6 "mcumgrctl ${MCUMGR_VERSION}"
+heading 7 "mcumgrctl ${MCUMGR_VERSION}"
 
 readonly MCUMGR_OUTPUT="${MCUMGR_DIR}/${mcumgr_name}"
 readonly MCUMGR_MARKER="${MCUMGR_DIR}/.retroplc-mcumgr-version"
@@ -531,17 +522,16 @@ if [[ "${mcumgr_is_current}" == false ]]; then
 
     verify_sha256 "${mcumgr_tmp}" "${mcumgr_sha256}"
 
-    mkdir -p "${MCUMGR_DIR}"
     cp "${mcumgr_tmp}" "${MCUMGR_OUTPUT}"
     chmod +x "${MCUMGR_OUTPUT}"
     printf '%s\n' "${MCUMGR_VERSION}" > "${MCUMGR_MARKER}"
 fi
 
 # -----------------------------------------------------------------------------
-# Managed RetroPLC Runtime + pinned Zephyr workspace
+# Managed RetroPLC Runtime + private Zephyr west workspace
 # -----------------------------------------------------------------------------
 
-heading 7 "RetroPLC Runtime ${RETROPLC_RUNTIME_REVISION} + Zephyr ${ZEPHYR_REVISION}"
+heading 8 "RetroPLC Runtime ${RETROPLC_RUNTIME_REVISION}"
 
 mkdir -p "${ZEPHYR_WORKSPACE_DIR}"
 
@@ -559,38 +549,30 @@ git -C "${RETROPLC_RUNTIME_DIR}" fetch \
     --depth 1 origin "${RETROPLC_RUNTIME_REVISION}"
 git -C "${RETROPLC_RUNTIME_DIR}" checkout --detach --force FETCH_HEAD
 
-if [[ ! -d "${ZEPHYR_DIR}/.git" ]]; then
-    rm -rf "${ZEPHYR_DIR}"
-    git clone --filter=blob:none --no-checkout "${ZEPHYR_REPOSITORY}" "${ZEPHYR_DIR}"
-else
-    git -C "${ZEPHYR_DIR}" remote set-url origin "${ZEPHYR_REPOSITORY}"
-fi
+# Explicitly create the private nested west workspace. This prevents an older
+# parent workspace (for example ~/RetroPLC/.west) from becoming RetroPLC's
+# active west topdir.
+mkdir -p "${ZEPHYR_WORKSPACE_DIR}/.west"
+cat > "${ZEPHYR_WORKSPACE_DIR}/.west/config" <<'WEST_CONFIG'
+[manifest]
+path = RetroPLC_Runtime
+file = west.yml
+WEST_CONFIG
 
-git -C "${ZEPHYR_DIR}" fetch --depth 1 origin "${ZEPHYR_REVISION}"
-git -C "${ZEPHYR_DIR}" checkout --detach --force FETCH_HEAD
+# -----------------------------------------------------------------------------
+# Zephyr + required modules + Python packages
+# -----------------------------------------------------------------------------
 
-if [[ ! -d "${ZEPHYR_WORKSPACE_DIR}/.west" ]]; then
-    (
-        cd "${ZEPHYR_WORKSPACE_DIR}"
-        "${WEST}" init -l RetroPLC_Runtime
-    )
-else
-    (
-        cd "${ZEPHYR_WORKSPACE_DIR}"
-        "${WEST}" config manifest.path RetroPLC_Runtime
-        "${WEST}" config manifest.file west.yml
-    )
-fi
-
-heading 8 "Opta Zephyr modules + Python packages"
+heading 9 "Zephyr workspace + required modules"
 
 (
     cd "${ZEPHYR_WORKSPACE_DIR}"
     "${WEST}" update
 )
 
-# Install the Python package set declared by this Zephyr workspace into the
-# RetroPLC-owned venv. No global Python packages are touched.
+[[ -d "${ZEPHYR_DIR}/.git" ]] || \
+    die "Zephyr was not installed into ${ZEPHYR_WORKSPACE_DIR}."
+
 (
     cd "${ZEPHYR_WORKSPACE_DIR}"
     "${WEST}" packages pip --install
@@ -600,7 +582,7 @@ heading 8 "Opta Zephyr modules + Python packages"
 # Private Zephyr SDK
 # -----------------------------------------------------------------------------
 
-heading 9 "Zephyr SDK (arm-zephyr-eabi)"
+heading 10 "Private Zephyr SDK"
 
 sdk_expected_version="$(head -n 1 "${ZEPHYR_DIR}/SDK_VERSION" | tr -d '[:space:]')"
 [[ -n "${sdk_expected_version}" ]] || \
@@ -617,9 +599,10 @@ if [[ -f "${ZEPHYR_SDK_DIR}/sdk_version" ]] && \
 fi
 
 if [[ "${sdk_is_current}" == false ]]; then
-    info "Installing private Zephyr SDK ${sdk_expected_version}"
+    info "Installing private Zephyr SDK ${sdk_expected_version} into ${ZEPHYR_SDK_DIR}"
 
     zephyr_sdk_archive_path="${TMP_DIR}/${ZEPHYR_SDK_ARCHIVE}"
+
     download_github_release_asset \
         "zephyrproject-rtos/sdk-ng" \
         "v${sdk_expected_version}" \
@@ -628,27 +611,41 @@ if [[ "${sdk_is_current}" == false ]]; then
 
     rm -rf "${ZEPHYR_SDK_DIR}"
     mkdir -p "${ZEPHYR_SDK_DIR}"
+
     tar -xJf "${zephyr_sdk_archive_path}" \
         -C "${ZEPHYR_SDK_DIR}" \
         --strip-components=1
 
     [[ -x "${ZEPHYR_SDK_DIR}/setup.sh" ]] || \
         die "The Zephyr SDK setup executable was not installed."
+
+    # Install only the ARM GNU toolchain required for the Opta plus host tools.
+    # Host tools include DTC. No SDK outside Tools is discovered or reused.
     "${ZEPHYR_SDK_DIR}/setup.sh" -t arm-zephyr-eabi -h
 fi
 
 [[ -x "${ZEPHYR_SDK_GCC}" ]] || \
     die "The private Zephyr ARM toolchain was not installed."
 
-dtc_bin="$(find "${ZEPHYR_SDK_DIR}/hosttools" -type f -path '*/usr/bin/dtc' -print -quit)"
-[[ -x "${dtc_bin}" ]] || die "The private Zephyr SDK DTC executable was not installed."
+dtc_bin="$(
+    find "${ZEPHYR_SDK_DIR}/hosttools" \
+        -type f \
+        -path '*/usr/bin/dtc' \
+        -print \
+        -quit
+)"
+[[ -x "${dtc_bin}" ]] || \
+    die "The private Zephyr SDK DTC executable was not installed."
+
+export ZEPHYR_SDK_INSTALL_DIR="${ZEPHYR_SDK_DIR}"
+
 dtc_version="$("${dtc_bin}" --version 2>&1)"
 
 # -----------------------------------------------------------------------------
 # Final verification
 # -----------------------------------------------------------------------------
 
-heading 10 "Verifying RetroPLC setup"
+heading 11 "Verifying RetroPLC setup"
 
 echo "  Node:           $("${NODE_BIN}" --version)"
 echo "  Python:         ${python_full_version}"
@@ -656,15 +653,14 @@ echo "  west:           $("${WEST}" --version)"
 echo "  CMake:          $("${CMAKE}" --version | head -n 1)"
 echo "  Ninja:          $("${NINJA}" --version)"
 echo "  DTC:            ${dtc_version}"
-echo "  STruC++:        ${STRUCPP_VERSION}"
-echo "  STruC++ CLI:    ${STRUCPP_COMPILER}"
-echo "  STruC++ LSP:    ${STRUCPP_SERVER}"
+echo "  STruC++:        ${strucpp_version} (${strucpp_commit:0:12})"
+echo "  STruC++ source: ${STRUCPP_SOURCE_DIR}"
 echo "  Runtime:        $(git -C "${RETROPLC_RUNTIME_DIR}" rev-parse --short=12 HEAD)"
 echo "  Zephyr:         $(git -C "${ZEPHYR_DIR}" rev-parse --short=12 HEAD)"
-echo "  Zephyr SDK:     ${sdk_expected_version}"
+echo "  Zephyr SDK:     ${sdk_expected_version} (${ZEPHYR_SDK_DIR})"
 echo "  mcumgrctl:      ${MCUMGR_OUTPUT}"
-
 echo
-echo "System dependencies still required: git, curl, tar."
-echo "Node, npm, Python, west, CMake, Ninja, DTC, Zephyr and the Zephyr SDK are RetroPLC-managed under Tools."
+echo "System dependencies still required: git, curl, tar and basic POSIX utilities."
+echo "Node, Python, west, CMake, Ninja, the Zephyr workspace, Zephyr SDK, DTC and mcumgrctl are RetroPLC-managed under Tools."
+echo "STruC++ and Win98SE are pinned Git submodules inside the RetroPLC_IDE checkout."
 success "RetroPLC setup completed successfully."
