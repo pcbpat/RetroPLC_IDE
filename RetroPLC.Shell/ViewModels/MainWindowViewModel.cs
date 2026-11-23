@@ -333,7 +333,9 @@ public partial class MainWindowViewModel : ViewModelBase
     private void OnBuildOperationExited(BuildOperation operation, int exitCode)
     {
         var action = GetBuildOperationName(operation);
-        var result = exitCode == 0 ? $"{action} succeeded" : $"{action} failed ({exitCode})";
+        var result = exitCode == 0 ? $"{action} succeeded" :
+            _factory.BuildOperationError is { } error ? $"{action} failed: {error}" :
+            $"{action} failed ({exitCode})";
         PlcStatus = result;
     }
 

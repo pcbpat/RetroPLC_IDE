@@ -21,6 +21,8 @@
         <!-- Dock can recreate this surrounding view, but each view model keeps
              the same terminal renderer, PTY process, and scrollback buffer. -->
         <ContentControl Content="{Binding Terminal}" />
+        <TextBlock Text="{Binding LaunchError}" IsVisible="{Binding HasLaunchError}"
+                   TextWrapping="Wrap" Margin="8" />
         <ScrollBar Grid.Column="1"
                    Orientation="Vertical"
                    AllowAutoHide="False"

@@ -12,35 +12,54 @@ namespace RetroPLC.Shell.ViewModels.Docking;
 
 public sealed class BuildViewModel : Tool
 {
-    private readonly FirmwareBuildService _buildService = new();
+    private readonly FirmwareBuildService _buildService;
     private FirmwareBuildSession? _buildSession;
 
-    public BuildViewModel()
+    public BuildViewModel() : this(new FirmwareBuildService())
     {
+    }
+
+    public BuildViewModel(FirmwareBuildService buildService)
+    {
+        _buildService = buildService;
         Session = new BuildTerminalSession();
     }
 
     public event Action<BuildOperation, int>? OperationExited;
 
     public BuildTerminalSession Session { get; }
+    public string? OperationError { get; private set; }
 
     public void PrepareVerify(string projectDirectory, string projectName) =>
         StartSession(_buildService.StartVerify(projectDirectory, projectName));
 
     public void PrepareBuild(string projectDirectory, string projectName) =>
-        StartSession(_buildService.StartBuild(projectDirectory, projectName));
+        PrepareBuild(projectDirectory, projectName, null);
+
+    public void PrepareBuild(string projectDirectory, string projectName, ZephyrBuildConfiguration? project) =>
+        StartSession(_buildService.StartBuild(projectDirectory, projectName, project));
 
     public void PrepareRebuild(string projectDirectory, string projectName) =>
-        StartSession(_buildService.StartRebuild(projectDirectory, projectName));
+        PrepareRebuild(projectDirectory, projectName, null);
+
+    public void PrepareRebuild(string projectDirectory, string projectName, ZephyrBuildConfiguration? project) =>
+        StartSession(_buildService.StartRebuild(projectDirectory, projectName, project));
 
     public void PrepareClean(string projectDirectory) =>
-        StartSession(_buildService.StartClean(projectDirectory));
+        PrepareClean(projectDirectory, null);
+
+    public void PrepareClean(string projectDirectory, ZephyrBuildConfiguration? project) =>
+        StartSession(_buildService.StartClean(projectDirectory, project));
 
     public void PrepareDownload(string projectDirectory, string projectName) =>
-        StartSession(_buildService.StartDownload(projectDirectory, projectName));
+        PrepareDownload(projectDirectory, projectName, null);
+
+    public void PrepareDownload(string projectDirectory, string projectName, ZephyrBuildConfiguration? project) =>
+        StartSession(_buildService.StartDownload(projectDirectory, projectName, project));
 
     private void StartSession(FirmwareBuildSession session)
     {
+        OperationError = null;
         _buildSession = session;
         StartProcess(session.InitialProcess);
     }
@@ -68,24 +87,29 @@ public sealed class BuildViewModel : Tool
         if (!base.OnClose())
             return false;
 
+        _buildSession = null;
         Session.Terminal.ProcessExited -= OnProcessExited;
         Session.Terminal.Shutdown();
         return true;
     }
 
-    private void OnProcessExited(object? sender, ProcessExitedEventArgs e)
+    private void OnProcessExited(object? sender, ProcessExitedEventArgs e) =>
+        Dispatcher.UIThread.Post(() => CompleteStage(sender, e.ExitCode));
+
+    private void CompleteStage(object? sender, int exitCode)
     {
-        if (_buildSession is not { } session)
+        if (!ReferenceEquals(sender, Session.Terminal) || _buildSession is not { } session)
             return;
 
-        var outcome = session.ProcessExited(e.ExitCode);
+        var outcome = session.ProcessExited(exitCode);
         if (outcome.NextProcess is { } nextProcess)
         {
-            Dispatcher.UIThread.Post(() => StartProcess(nextProcess));
+            StartProcess(nextProcess);
             return;
         }
 
         _buildSession = null;
+        OperationError = outcome.ErrorMessage;
         OperationExited?.Invoke(session.Operation, outcome.ExitCode ?? -1);
     }
 }

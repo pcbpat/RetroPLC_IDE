@@ -6,10 +6,10 @@ This project owns the IDE-facing STruC++ integration:
 - `StrucppLanguageService` maps that API to LSP over stdio using OmniSharp's
   C# Language Server Protocol client.
 - `StrucppToolchain` resolves the setup-managed Node runtime, compiler,
-  language server, and libraries from the solution-level `Tools` directory.
-- `Tools/strucpp/dist/node/cli.js` is the generated STruC++ CLI used by Build
+  language server, and libraries from the application-level `tools` directory.
+- `tools/strucpp/dist/node/cli.js` is the generated STruC++ CLI used by Build
   and library import.
-- `Tools/strucpp/vscode-extension/out/server/src/server.js` is the generated
+- `tools/strucpp/vscode-extension/out/server/src/server.js` is the generated
   language server.
 
 Consumers should not construct JSON-RPC payloads or hard-code tool paths. They
@@ -19,5 +19,8 @@ document, completion, formatting, and rename methods on
 
 The generated tools are not copied into application output. From the repository
 root, run `./setup.sh` to install the private Node runtime and build the pinned
-STruC++ tools under `Tools`. Set `RETROPLC_TOOLS_DIRECTORY` only when the tools
+STruC++ tools under `tools`. Set `RETROPLC_TOOLS_DIRECTORY` only when the tools
 directory is intentionally located outside the solution.
+
+For a published application, place `tools` next to the application binaries.
+Relative overrides are resolved from the application root.

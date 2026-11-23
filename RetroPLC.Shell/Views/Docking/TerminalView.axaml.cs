@@ -94,9 +94,9 @@ public partial class TerminalView : UserControl
 
     private void TerminalScrollBar_OnScroll(object? sender, ScrollEventArgs e)
     {
-        if (DataContext is TerminalViewModel terminal)
+        if (DataContext is TerminalViewModel { Terminal: { } terminal })
         {
-            terminal.Terminal.ViewportY = (int)e.NewValue;
+            terminal.ViewportY = (int)e.NewValue;
         }
     }
 }

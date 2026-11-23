@@ -1,4 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+using System;
+using System.IO;
+using System.Linq;
+using RetroPLC.BuildHost;
 using Dock.Model.Mvvm.Controls;
 using RetroPLC.Shell.Controls;
 
@@ -10,12 +14,29 @@ public sealed class TerminalViewModel : Tool
 {
     private bool _focusPending;
 
-    public TerminalViewModel()
+    public TerminalViewModel(ZephyrConfiguration configuration, string? projectDirectory,
+        ZephyrBuildConfiguration? project)
     {
-        Terminal = new DockTerminalView();
+        try
+        {
+            var launch = configuration.CreateTerminal(projectDirectory, project);
+            Terminal = new DockTerminalView
+            {
+                Process = launch.Executable,
+                Args = launch.Arguments.ToList(),
+                StartingDirectory = launch.WorkingDirectory
+            };
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
+                                           PlatformNotSupportedException or ArgumentException or InvalidOperationException)
+        {
+            LaunchError = exception.Message;
+        }
     }
 
-    public DockTerminalView Terminal { get; }
+    public DockTerminalView? Terminal { get; }
+    public string? LaunchError { get; }
+    public bool HasLaunchError => LaunchError is not null;
 
     public void RequestFocus() => _focusPending = true;
 
@@ -37,7 +58,7 @@ public sealed class TerminalViewModel : Tool
             return false;
         }
 
-        Terminal.Shutdown();
+        Terminal?.Shutdown();
         return true;
     }
 }

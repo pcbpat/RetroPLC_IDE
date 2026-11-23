@@ -20,13 +20,14 @@ public sealed record BuildProcess(
 public sealed record BuildProcessOutcome(BuildProcess? NextProcess, int? ExitCode)
 {
     public bool IsComplete => ExitCode.HasValue;
+    public string? ErrorMessage { get; init; }
 }
 
 public sealed class FirmwareBuildSession
 {
     private readonly FirmwareBuildService _service;
     private readonly ZephyrBuildContext? _zephyrContext;
-    private readonly string _pristineMode;
+    private readonly BuildProcess? _zephyrProcess;
     private BuildStage _stage;
 
     internal FirmwareBuildSession(
@@ -42,7 +43,8 @@ public sealed class FirmwareBuildSession
         InitialProcess = initialProcess;
         _stage = stage;
         _zephyrContext = zephyrContext;
-        _pristineMode = pristineMode;
+        if (zephyrContext is not null)
+            _zephyrProcess = service.CreateZephyrBuildProcess(zephyrContext, pristineMode);
     }
 
     public BuildOperation Operation { get; }
@@ -56,12 +58,10 @@ public sealed class FirmwareBuildSession
 
         if (Operation is BuildOperation.Build or BuildOperation.Rebuild or BuildOperation.Download &&
             _stage == BuildStage.StructuredText &&
-            _zephyrContext is { } context)
+            _zephyrProcess is { } zephyrProcess)
         {
             _stage = BuildStage.Zephyr;
-            return new BuildProcessOutcome(
-                _service.CreateZephyrBuildProcess(context, _pristineMode),
-                null);
+            return new BuildProcessOutcome(zephyrProcess, null);
         }
 
         if (Operation is BuildOperation.Build or BuildOperation.Rebuild or BuildOperation.Download &&
@@ -83,9 +83,7 @@ public sealed class FirmwareBuildSession
             catch (Exception exception) when (
                 exception is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"Unable to prepare the firmware output: {exception.Message}");
-                return Complete(-1);
+                return Complete(-1) with { ErrorMessage = exception.Message };
             }
         }
 
@@ -101,7 +99,16 @@ public sealed class FirmwareBuildSession
 
 public sealed class FirmwareBuildService
 {
-    private const string DefaultBoard = "arduino_opta/stm32h747xx/m7";
+    public FirmwareBuildService() : this(new ZephyrConfiguration())
+    {
+    }
+
+    public FirmwareBuildService(ZephyrConfiguration configuration)
+    {
+        Configuration = configuration;
+    }
+
+    public ZephyrConfiguration Configuration { get; }
 
     public FirmwareBuildSession StartVerify(string projectDirectory, string projectName) =>
         new(
@@ -111,20 +118,29 @@ public sealed class FirmwareBuildService
             BuildStage.StructuredText,
             null);
 
-    public FirmwareBuildSession StartBuild(string projectDirectory, string projectName)
+    public FirmwareBuildSession StartBuild(string projectDirectory, string projectName) =>
+        StartBuild(projectDirectory, projectName, null);
+
+    public FirmwareBuildSession StartBuild(string projectDirectory, string projectName,
+        ZephyrBuildConfiguration? project, ZephyrBuildConfiguration? overrides = null)
     {
-        var context = ResolveZephyrBuildContext(projectDirectory);
+        var context = ResolveZephyrBuildContext(projectDirectory, project, overrides);
         return new FirmwareBuildSession(
             this,
             BuildOperation.Build,
             CreateStrucppCompilerProcess(projectDirectory, projectName),
             BuildStage.StructuredText,
-            context);
+            context,
+            context.Settings.PristineMode!);
     }
 
-    public FirmwareBuildSession StartRebuild(string projectDirectory, string projectName)
+    public FirmwareBuildSession StartRebuild(string projectDirectory, string projectName) =>
+        StartRebuild(projectDirectory, projectName, null);
+
+    public FirmwareBuildSession StartRebuild(string projectDirectory, string projectName,
+        ZephyrBuildConfiguration? project, ZephyrBuildConfiguration? overrides = null)
     {
-        var context = ResolveZephyrBuildContext(projectDirectory);
+        var context = ResolveZephyrBuildContext(projectDirectory, project, overrides);
         return new FirmwareBuildSession(
             this,
             BuildOperation.Rebuild,
@@ -135,28 +151,43 @@ public sealed class FirmwareBuildService
     }
 
     public FirmwareBuildSession StartClean(string projectDirectory) =>
-        new(
+        StartClean(projectDirectory, null);
+
+    public FirmwareBuildSession StartClean(string projectDirectory, ZephyrBuildConfiguration? project,
+        ZephyrBuildConfiguration? overrides = null)
+    {
+        projectDirectory = GetProjectDirectory(projectDirectory);
+        return new FirmwareBuildSession(
             this,
             BuildOperation.Clean,
-            CreateCleanProcess(projectDirectory),
+            Configuration.Environment.CreateCMake(
+                projectDirectory, Configuration.ResolveHostTools(projectDirectory, project, overrides),
+                ["-E", "remove_directory", Path.Combine(projectDirectory, "Build")]),
             BuildStage.Clean,
             null);
+    }
 
-    public FirmwareBuildSession StartDownload(string projectDirectory, string projectName)
+    public FirmwareBuildSession StartDownload(string projectDirectory, string projectName) =>
+        StartDownload(projectDirectory, projectName, null);
+
+    public FirmwareBuildSession StartDownload(string projectDirectory, string projectName,
+        ZephyrBuildConfiguration? project, ZephyrBuildConfiguration? overrides = null)
     {
-        var context = ResolveZephyrBuildContext(projectDirectory);
+        var context = ResolveZephyrBuildContext(projectDirectory, project, overrides);
         return new FirmwareBuildSession(
             this,
             BuildOperation.Download,
             CreateStrucppCompilerProcess(projectDirectory, projectName),
             BuildStage.StructuredText,
-            context);
+            context,
+            context.Settings.PristineMode!);
     }
 
-    private static BuildProcess CreateStrucppCompilerProcess(
+    private BuildProcess CreateStrucppCompilerProcess(
         string projectDirectory,
         string projectName)
     {
+        projectDirectory = GetProjectDirectory(projectDirectory);
         var compiler = StrucppToolchain.GetCompilerCommand();
 
         var sourceRoot = Path.Combine(projectDirectory, "ProjectFiles");
@@ -188,33 +219,45 @@ public sealed class FirmwareBuildService
         return CreatePlatformProcess(compiler.ExecutablePath, arguments, projectDirectory);
     }
 
-    internal BuildProcess CreateZephyrBuildProcess(
-        ZephyrBuildContext context,
-        string pristineMode) =>
-        CreateWestProcess(
-            context,
-            [
-                "build",
-                "-p", pristineMode,
-                "--sysbuild",
-                "-b", context.Board,
-                "-d", context.BuildDirectory,
-                context.ApplicationDirectory,
-                "--",
-                $"-Dapp_RETROPLC_GENERATED_DIR={context.GeneratedDirectory}"
-            ]);
-
-    private static BuildProcess CreateCleanProcess(string projectDirectory)
+    internal BuildProcess CreateZephyrBuildProcess(ZephyrBuildContext context, string pristineMode)
     {
-        var cmake = GetManagedToolPath("cmake");
-        if (!File.Exists(cmake))
-            throw new FileNotFoundException(
-                "The RetroPLC-managed CMake executable was not found. Run setup.sh first.",
-                cmake);
-        return CreatePlatformProcess(
-            cmake,
-            ["-E", "remove_directory", Path.Combine(projectDirectory, "Build")],
-            projectDirectory);
+        var sysbuild = context.Settings.UseSysbuild!.Value;
+        var generatedOption = sysbuild ? $"{context.ApplicationName}_RETROPLC_GENERATED_DIR" : "RETROPLC_GENERATED_DIR";
+        var sdkDirectory = context.Settings.SdkDirectory!;
+        var cachePath = Path.Combine(context.BuildDirectory, "CMakeCache.txt");
+        if (pristineMode != "always" && File.Exists(cachePath))
+        {
+            var cachedSdk = ReadCMakeCachePath(cachePath, "ZEPHYR_SDK_INSTALL_DIR");
+            var cachedSysbuild = ReadCMakeCachePath(cachePath, "APP_DIR") is not null;
+            if (cachedSdk is null || !SameDirectory(cachedSdk, sdkDirectory) || cachedSysbuild != sysbuild)
+            {
+                if (pristineMode == "never")
+                    throw new InvalidOperationException(
+                        "The build directory uses different SDK or sysbuild settings. Rebuild to apply the selected configuration.");
+                pristineMode = "always";
+            }
+        }
+        var arguments = new List<string>
+        {
+            "build", "-p", pristineMode, sysbuild ? "--sysbuild" : "--no-sysbuild", "-b", context.Settings.BoardTarget!,
+            "-d", context.BuildDirectory, context.Settings.ApplicationDirectory!, "--"
+        };
+
+        foreach (var option in context.Settings.CMakeOptions!)
+            arguments.Add($"-D{option.Key}={option.Value}");
+
+        arguments.Add($"-DBOARD:STRING={context.Settings.BoardTarget}");
+        arguments.Add($"-D{generatedOption}={context.GeneratedDirectory}");
+        arguments.Add($"-DZEPHYR_SDK_INSTALL_DIR:PATH={sdkDirectory}");
+        arguments.Add($"-DZephyr-sdk_DIR:PATH={Path.Combine(sdkDirectory, "cmake")}");
+        if (sysbuild)
+        {
+            arguments.Add($"-D{context.ApplicationName}_BOARD={context.Settings.BoardTarget}");
+            arguments.Add($"-D{context.ApplicationName}_ZEPHYR_SDK_INSTALL_DIR={sdkDirectory}");
+            arguments.Add($"-D{context.ApplicationName}_Zephyr-sdk_DIR={Path.Combine(sdkDirectory, "cmake")}");
+        }
+        return Configuration.Environment.CreateWest(context.Settings.WorkspaceDirectory!,
+            context.Settings.HostToolsDirectory, context.Settings.SdkDirectory, arguments);
     }
 
     internal BuildProcess CreateFirmwareUpdateProcess(ZephyrBuildContext context)
@@ -235,7 +278,7 @@ public sealed class FirmwareBuildService
             "mcumgrctl");
         if (!File.Exists(executablePath))
             throw new FileNotFoundException(
-                "The mcumgrctl firmware updater was not found.",
+                $"The managed mcumgrctl firmware updater was not found at '{executablePath}'. Run setup.sh or check RETROPLC_TOOLS_DIRECTORY.",
                 executablePath);
         StrucppToolchain.EnsureExecutable(executablePath);
 
@@ -243,39 +286,6 @@ public sealed class FirmwareBuildService
             executablePath,
             ["-u", ".", "firmware", "update", "--timeout", "5000", firmwarePath],
             context.ProjectBuildDirectory);
-    }
-
-    private static BuildProcess CreateWestProcess(
-        ZephyrBuildContext context,
-        List<string> arguments)
-    {
-        if (OperatingSystem.IsWindows())
-            return CreatePlatformProcess(
-                context.WestExecutable,
-                arguments,
-                context.WorkspaceDirectory);
-
-        var virtualEnvironment = Path.Combine(
-            StrucppToolchain.ToolsDirectory,
-            "toolchain",
-            "venv");
-        var managedPath = Path.Combine(virtualEnvironment, "bin");
-        var zephyrSdk = Path.Combine(
-            StrucppToolchain.ToolsDirectory,
-            "toolchain",
-            "zephyr-sdk");
-        var nodePath = Path.GetDirectoryName(StrucppToolchain.GetNodePath())!;
-        var inheritedPath = Environment.GetEnvironmentVariable("PATH");
-        var path = string.Join(
-            Path.PathSeparator,
-            new[] { managedPath, nodePath, inheritedPath }
-                .Where(value => !string.IsNullOrWhiteSpace(value)));
-
-        arguments.Insert(0, context.WestExecutable);
-        arguments.Insert(0, $"PATH={path}");
-        arguments.Insert(0, $"VIRTUAL_ENV={virtualEnvironment}");
-        arguments.Insert(0, $"ZEPHYR_SDK_INSTALL_DIR={zephyrSdk}");
-        return new BuildProcess("/usr/bin/env", arguments, context.WorkspaceDirectory);
     }
 
     private static BuildProcess CreatePlatformProcess(
@@ -290,69 +300,51 @@ public sealed class FirmwareBuildService
         return new BuildProcess("/usr/bin/env", arguments, workingDirectory);
     }
 
-    private static ZephyrBuildContext ResolveZephyrBuildContext(string projectDirectory)
+    private ZephyrBuildContext ResolveZephyrBuildContext(string projectDirectory,
+        ZephyrBuildConfiguration? project, ZephyrBuildConfiguration? overrides)
     {
-        var workspaceDirectory = Environment.GetEnvironmentVariable("RETROPLC_ZEPHYR_WORKSPACE");
-        if (string.IsNullOrWhiteSpace(workspaceDirectory))
+        var settings = Configuration.Resolve(projectDirectory, project, overrides);
+        if (!ZephyrBoardService.IsBoardTarget(settings.BoardTarget))
+            throw new InvalidOperationException(
+                "Select a valid Zephyr board target in the project or set RETROPLC_ZEPHYR_BOARD.");
+        ZephyrConfiguration.RequireWorkspace(settings.WorkspaceDirectory);
+        if (settings.ApplicationDirectory is null ||
+            !File.Exists(Path.Combine(settings.ApplicationDirectory, "CMakeLists.txt")))
+            throw new DirectoryNotFoundException(
+                $"No Zephyr application exists at '{settings.ApplicationDirectory}'. " +
+                "Set the project applicationDirectory or RETROPLC_ZEPHYR_APPLICATION.");
+
+        if (settings.SdkDirectory is null)
+            throw new InvalidOperationException("Select a Zephyr SDK in the project or set RETROPLC_ZEPHYR_SDK.");
+        ZephyrSdkService.ValidateInstallation(settings.SdkDirectory);
+        if (settings.PristineMode is not ("auto" or "always" or "never"))
+            throw new InvalidOperationException("Zephyr pristine mode must be auto, always, or never.");
+        foreach (var option in settings.CMakeOptions!)
         {
-            workspaceDirectory = Path.Combine(
-                StrucppToolchain.ToolsDirectory,
-                "toolchain",
-                "zephyr-workspace");
+            if (string.IsNullOrWhiteSpace(option.Key) || option.Key.Contains('='))
+                throw new InvalidOperationException($"Invalid CMake option name '{option.Key}'.");
         }
 
-        workspaceDirectory = Path.GetFullPath(workspaceDirectory);
-        if (!Directory.Exists(workspaceDirectory))
-            throw new DirectoryNotFoundException(
-                $"The Zephyr workspace was not found at '{workspaceDirectory}'. " +
-                "Run setup.sh or set RETROPLC_ZEPHYR_WORKSPACE.");
-
-        var applicationDirectory = Environment.GetEnvironmentVariable(
-            "RETROPLC_ZEPHYR_APPLICATION");
-        if (string.IsNullOrWhiteSpace(applicationDirectory))
-            applicationDirectory = Path.Combine(workspaceDirectory, "RetroPLC_Runtime", "app");
-        applicationDirectory = Path.GetFullPath(applicationDirectory);
-        if (!Directory.Exists(applicationDirectory))
-            throw new DirectoryNotFoundException(
-                $"The RetroPLC Zephyr application was not found at '{applicationDirectory}'. " +
-                "Set RETROPLC_ZEPHYR_APPLICATION to its app directory.");
-
-        var configuredWest = Environment.GetEnvironmentVariable("RETROPLC_WEST_EXECUTABLE");
-        var bundledWest = GetManagedToolPath("west");
-        var westExecutable = !string.IsNullOrWhiteSpace(configuredWest)
-            ? configuredWest
-            : bundledWest;
-        if (!File.Exists(westExecutable))
-            throw new FileNotFoundException(
-                "The RetroPLC-managed west executable was not found. Run setup.sh first.",
-                westExecutable);
-
-        var board = Environment.GetEnvironmentVariable("RETROPLC_ZEPHYR_BOARD");
-        if (string.IsNullOrWhiteSpace(board))
-            board = DefaultBoard;
-
-        var buildRoot = Path.Combine(projectDirectory, "Build");
+        var buildRoot = Path.Combine(GetProjectDirectory(projectDirectory), "Build");
         return new ZephyrBuildContext(
-            workspaceDirectory,
-            applicationDirectory,
             buildRoot,
             Path.Combine(buildRoot, "Generated"),
-            Path.Combine(buildRoot, "Zephyr", MakeSafeDirectoryName(board)),
+            settings.BuildDirectory ?? Path.Combine(buildRoot, "Zephyr", MakeSafeDirectoryName(settings.BoardTarget!)),
             Path.Combine(buildRoot, "Artifacts"),
-            westExecutable,
-            board);
+            Path.GetFileName(Path.TrimEndingDirectorySeparator(settings.ApplicationDirectory)),
+            settings);
     }
-
-    private static string GetManagedToolPath(string toolName) => Path.Combine(
-        StrucppToolchain.ToolsDirectory,
-        "toolchain",
-        "venv",
-        OperatingSystem.IsWindows() ? "Scripts" : "bin",
-        OperatingSystem.IsWindows() ? $"{toolName}.exe" : toolName);
 
     internal static void PublishBuildArtifacts(ZephyrBuildContext context)
     {
-        var zephyrOutputDirectory = Path.Combine(context.BuildDirectory, "app", "zephyr");
+        var imageBuildDirectory = context.Settings.UseSysbuild!.Value
+            ? Path.Combine(context.BuildDirectory, context.ApplicationName)
+            : context.BuildDirectory;
+        var sdkPackage = ReadCMakeCachePath(Path.Combine(imageBuildDirectory, "CMakeCache.txt"), "Zephyr-sdk_DIR");
+        if (sdkPackage is not null && !SameDirectory(sdkPackage, Path.Combine(context.Settings.SdkDirectory!, "cmake")))
+            throw new IOException($"Zephyr configured SDK at '{sdkPackage}' instead of the selected SDK at '{context.Settings.SdkDirectory}'.");
+
+        var zephyrOutputDirectory = Path.Combine(imageBuildDirectory, "zephyr");
         var artifacts = new[]
         {
             (Source: "zephyr.elf", Destination: "firmware.elf"),
@@ -374,6 +366,23 @@ public sealed class FirmwareBuildService
 
             File.Copy(sourcePath, destinationPath, overwrite: true);
         }
+    }
+
+    private string GetProjectDirectory(string projectDirectory) =>
+        Path.GetFullPath(projectDirectory, Configuration.Environment.Installation.ApplicationDirectory);
+
+    private static string? ReadCMakeCachePath(string cachePath, string key) =>
+        File.Exists(cachePath) ? File.ReadLines(cachePath).FirstOrDefault(line =>
+            line.StartsWith(key + ":", StringComparison.Ordinal))?.Split('=', 2).Last() : null;
+
+    private static bool SameDirectory(string first, string second)
+    {
+        if (!Path.IsPathFullyQualified(first) || !Path.IsPathFullyQualified(second))
+            return false;
+
+        return string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(first)),
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(second)),
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
     }
 
     private static bool IsTestSource(string relativePath) =>
@@ -412,11 +421,9 @@ internal enum BuildStage
 }
 
 internal sealed record ZephyrBuildContext(
-    string WorkspaceDirectory,
-    string ApplicationDirectory,
     string ProjectBuildDirectory,
     string GeneratedDirectory,
     string BuildDirectory,
     string ArtifactsDirectory,
-    string WestExecutable,
-    string Board);
+    string ApplicationName,
+    ZephyrBuildConfiguration Settings);

@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace RetroPLC.LanguageServerHost;
@@ -14,6 +13,8 @@ public static class StrucppToolchain
 {
     private const string ToolsDirectoryEnvironmentVariable = "RETROPLC_TOOLS_DIRECTORY";
 
+    public static string ApplicationDirectory { get; } = ResolveApplicationDirectory();
+
     private static readonly Lazy<string> ResolvedToolsDirectory = new(ResolveToolsDirectory);
 
     public static string ToolsDirectory => ResolvedToolsDirectory.Value;
@@ -27,8 +28,8 @@ public static class StrucppToolchain
         Path.Combine(StrucppDirectory, "libs");
 
     public static string GetNodePath() => OperatingSystem.IsWindows()
-        ? Path.Combine(ToolsDirectory, "toolchain", "node", "node.exe")
-        : Path.Combine(ToolsDirectory, "toolchain", "node", "bin", "node");
+        ? Path.Combine(ToolsDirectory, "node", "node.exe")
+        : Path.Combine(ToolsDirectory, "node", "bin", "node");
 
     public static string GetCompilerPath() =>
         Path.Combine(CompilerDirectory, "cli.js");
@@ -84,20 +85,11 @@ public static class StrucppToolchain
 
     public static void EnsureExecutable(string executablePath)
     {
-        if (OperatingSystem.IsWindows() || !File.Exists(executablePath))
-            return;
-
-        try
-        {
-            var mode = File.GetUnixFileMode(executablePath);
-            File.SetUnixFileMode(executablePath, mode | UnixFileMode.UserExecute);
-        }
-        catch (Exception) when (RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ||
-                                RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-        {
-            // Packaged tools normally retain their executable bit. The process
-            // start error remains actionable if a read-only package did not.
-        }
+        if (!OperatingSystem.IsWindows() &&
+            (File.GetUnixFileMode(executablePath) &
+                (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) == 0)
+            throw new UnauthorizedAccessException(
+                $"The managed executable at '{executablePath}' is not executable. Check its file permissions.");
     }
 
     private static StrucppToolCommand CreateNodeCommand(string scriptPath, string toolName)
@@ -105,11 +97,11 @@ public static class StrucppToolchain
         var nodePath = GetNodePath();
         if (!File.Exists(nodePath))
             throw new FileNotFoundException(
-                "The RetroPLC-managed Node.js runtime was not found. Run setup.sh first.",
+                $"The RetroPLC-managed Node.js runtime was not found at '{nodePath}'. Run setup.sh or check {ToolsDirectoryEnvironmentVariable}.",
                 nodePath);
         if (!File.Exists(scriptPath))
             throw new FileNotFoundException(
-                $"The STruC++ {toolName} was not found. Run setup.sh first.",
+                $"The STruC++ {toolName} was not found at '{scriptPath}'. Run setup.sh to build tools/strucpp.",
                 scriptPath);
 
         EnsureExecutable(nodePath);
@@ -119,25 +111,46 @@ public static class StrucppToolchain
     private static string ResolveToolsDirectory()
     {
         var configured = Environment.GetEnvironmentVariable(ToolsDirectoryEnvironmentVariable);
-        if (!string.IsNullOrWhiteSpace(configured))
-            return Path.GetFullPath(configured);
+        if (configured is null)
+            return Path.Combine(ApplicationDirectory, "tools");
 
-        foreach (var startPath in new[] { AppContext.BaseDirectory, Environment.CurrentDirectory })
+        if (string.IsNullOrWhiteSpace(configured))
+            throw new InvalidOperationException($"Set {ToolsDirectoryEnvironmentVariable} to the tools directory or unset it.");
+
+        string directory;
+        try
         {
-            for (var directory = new DirectoryInfo(Path.GetFullPath(startPath));
-                 directory is not null;
-                 directory = directory.Parent)
-            {
-                var candidate = Path.Combine(directory.FullName, "Tools");
-                if (Directory.Exists(Path.Combine(candidate, "strucpp")) ||
-                    Directory.Exists(Path.Combine(candidate, "toolchain")))
-                {
-                    return candidate;
-                }
-            }
+            directory = Path.GetFullPath(configured, ApplicationDirectory);
+        }
+        catch (ArgumentException exception)
+        {
+            throw new InvalidOperationException($"{ToolsDirectoryEnvironmentVariable} contains an invalid path.", exception);
         }
 
-        return Path.Combine(AppContext.BaseDirectory, "Tools");
+        if (!Directory.Exists(directory))
+            throw new DirectoryNotFoundException(
+                $"{ToolsDirectoryEnvironmentVariable} points to missing directory '{directory}'. Correct the override or unset it.");
+
+        return directory;
+    }
+
+    private static string ResolveApplicationDirectory()
+    {
+        var applicationDirectory = AppContext.BaseDirectory;
+        if (Directory.Exists(Path.Combine(applicationDirectory, "tools", "strucpp")) ||
+            Directory.Exists(Path.Combine(applicationDirectory, "tools", "node")) ||
+            Directory.Exists(Path.Combine(applicationDirectory, ".zinstaller")) ||
+            Directory.Exists(Path.Combine(applicationDirectory, ".zephyr")))
+            return applicationDirectory;
+
+        for (var directory = new DirectoryInfo(applicationDirectory); directory is not null; directory = directory.Parent)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "RetroPLC.sln")) &&
+                Directory.Exists(Path.Combine(directory.FullName, "RetroPLC.LanguageServerHost")))
+                return directory.FullName;
+        }
+
+        return applicationDirectory;
     }
 
     private static IReadOnlyList<StrucppLibrarySummary> GetLibraries(string directory)

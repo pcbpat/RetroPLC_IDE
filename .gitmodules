@@ -2,5 +2,5 @@
 	path = RetroPLC.Icons/Win98SE
 	url = https://github.com/nestoris/Win98SE.git
 [submodule "external/STruCpp"]
-	path = external/STruCpp
+	path = tools/strucpp
 	url = https://github.com/Autonomy-Logic/STruCpp.git

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using RetroPLC.BuildHost;
 using RetroPLC.LanguageServerHost;
 using System.Text.Json.Serialization;
 
@@ -16,6 +17,7 @@ public sealed class ProjectDocument
     public int FormatVersion { get; set; } = CurrentFormatVersion;
     public string Name { get; set; } = string.Empty;
     public string Template { get; set; } = "EmptyProject";
+    public ZephyrBuildConfiguration? Zephyr { get; set; }
     public List<ProjectNodeDefinition> Tree { get; set; } = [];
 }
 

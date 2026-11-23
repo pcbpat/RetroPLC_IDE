@@ -107,7 +107,13 @@ http-client.private.env.json
 [Ll]ogs/
 
 # Toolchains and generated dependencies installed by setup.sh
-/Tools/
+/tools/node/
+/tools/mcumgr/
+/tools/.retroplc-strucpp-build
+
+# Local AC6 hosttools installation
+/.zinstaller/
+/.zephyr/
 
 # MSBuild Binary and Structured Log
 *.binlog

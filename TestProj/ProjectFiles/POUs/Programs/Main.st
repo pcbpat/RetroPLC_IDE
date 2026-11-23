@@ -17,7 +17,7 @@ PROGRAM Main
 	        led1 := TRUE;
 	        ledState_s := eLED_STATE.LED_OFF;
 
-        eLED_STATE.LED_OFF :
+        eLED_STATE.LED_OFFh :
 	        led1 := FALSE;  
 	        ledState_s := eLED_STATE.LED_ON;
 

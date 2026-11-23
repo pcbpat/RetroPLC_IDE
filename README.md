@@ -68,16 +68,9 @@ On Linux/macOS:
 ./setup.sh
 ```
 
-The setup script initializes and configures:
-
-- `RetroPLC.Icons/Win98SE` and `external/STruCpp` as pinned Git submodules
-- private Node.js and Python runtimes
-- `west`, CMake and Ninja inside the RetroPLC Python environment
-- the STruC++ compiler, bundled libraries and language server built directly from the local `external/STruCpp` submodule
-- the RetroPLC Runtime checkout and a private Zephyr west workspace
-- the required Zephyr modules for the Arduino Opta
-- a private Zephyr SDK under `Tools/toolchain/zephyr-sdk`, including the `arm-zephyr-eabi` toolchain and DTC host tool
-- `mcumgrctl` for firmware updates and device management
+The setup script initializes the icon and STruC++ submodules and provisions the
+IDE's Node.js, STruC++ compiler, libraries, language server and mcumgrctl under
+`tools`. Set up AC6 and Zephyr separately using the steps below.
 
 Restore and build the IDE:
 
@@ -99,50 +92,97 @@ dotnet run --project RetroPLC.Shell/RetroPLC.Shell.csproj
 - `RetroPLC.BuildHost` — compiler and firmware build orchestration.
 - `RetroPLC.Icons` — generated Windows 98 SE-style icon catalog.
 - `RetroPLC.Theme` — shared Avalonia theme and controls.
-- `external/STruCpp` — pinned STruC++ source submodule used directly by the setup process.
-- `Tools` — setup-managed runtimes, toolchains and Zephyr workspace.
+- `tools/strucpp` — pinned STruC++ source submodule used directly by the setup process.
+- `tools` — setup-managed Node.js, STruC++ and mcumgrctl.
+- `.zinstaller` — AC6-managed Zephyr host tools and Python virtual environment.
 
-`external/STruCpp` is the canonical STruC++ source checkout. `setup.sh` builds
-the compiler, libraries and language server in that local submodule and creates
-`Tools/strucpp` as a symlink to it so the existing RetroPLC host paths continue
-to work without maintaining a second STruC++ clone.
+`tools/strucpp` is the canonical STruC++ source checkout. `setup.sh` builds
+the compiler, libraries and language server directly in that submodule. The Structured Text editor uses the TextMate grammar at
+`RetroPLC.Shell/Assets/Syntax/st.tmLanguage.json`.
 
-The Structured Text editor uses the TextMate grammar stored in
-`RetroPLC.Shell/Assets/Syntax/st.tmLanguage.json`. It is not a Tree-sitter
-grammar.
+## Zephyr host tools and firmware configuration
 
-On Linux and macOS, downloaded runtimes and toolchains are contained below the
-solution-level `Tools` directory:
+Install AC6 hosttools into `.zinstaller` at the solution root for development.
+For a published application, install hosttools into `.zinstaller` next to the
+application. A published installation needs AC6 files generated for its actual
+location because the AC6 manifest and venv can contain absolute paths. Use
+`RETROPLC_AC6_DIRECTORY` to select an existing installation elsewhere.
 
-```text
-Tools/
-├── mcumgr/
-├── strucpp -> ../external/STruCpp
-└── toolchain/
-    ├── node/
-    ├── python/
-    ├── venv/
-    ├── zephyr-sdk/
-    └── zephyr-workspace/
-        ├── .west/
-        ├── RetroPLC_Runtime/
-        ├── zephyr/
-        ├── bootloader/
-        ├── modules/
-        └── tools/
+Open an IDE terminal, change to the desired west workspace and provision its
+manifest and Python requirements with its managed `west`. To initialize a new
+RetroPLC Runtime workspace, use
+`west init -m https://github.com/pcbpat/RetroPLC_Runtime.git <workspace>`.
+From the workspace, run `west update` and `west packages pip --install` when
+supported by its Zephyr version. On Linux, the IDE uses AppImage extract-and-run
+mode when AC6 Python is an AppImage and the FUSE device is unavailable. Set
+`APPIMAGE_EXTRACT_AND_RUN=1` explicitly if the device is present but mounting
+the AppImage still fails.
+
+Use `.zephyr/zephyr-workspace` for the workspace containing `.west/config` and
+`.zephyr/sdks` for SDK installations. Select a board and an SDK that supports
+that target. The workspace's
+`RetroPLC_Runtime/app` is the default application directory. A `zephyr` object in
+the project's `project.json` can contain:
+
+```json
+{
+  "zephyr": {
+    "workspaceDirectory": "../my-west-workspace",
+    "useSysbuild": true,
+    "pristineMode": "auto",
+    "cMakeOptions": {
+      "CMAKE_VERBOSE_MAKEFILE": "ON"
+    }
+  }
+}
 ```
 
-The Zephyr SDK is always installed privately into
-`Tools/toolchain/zephyr-sdk`. An SDK installed elsewhere on the host is not
-discovered or reused.
+Set `boardTarget` to a target reported by the workspace, including any
+qualifiers. Set `sdkDirectory` to override the IDE's selected SDK. Other
+optional fields are `applicationDirectory`, `buildDirectory` and
+`hostToolsDirectory`. The default build directory is below `Build/Zephyr` in
+the project. Clean removes the project's `Build` tree.
 
-The private west workspace also lives below `Tools`. A `.west` directory in a
-parent directory, for example from an older `~/RetroPLC` workspace, is not used
-by the IDE.
+Settings apply in this order, from highest to lowest precedence.
+
+1. Explicit per-operation BuildHost overrides.
+2. The project's `zephyr` settings.
+3. IDE defaults, including `ZephyrConfiguration` defaults supplied by the
+   caller and the environment variables below.
+
+Project and operation paths are relative to the current project's directory.
+IDE paths are relative to the application root. CMake options merge by key.
+Rebuild always uses a pristine build.
+
+| IDE variable | Purpose |
+| --- | --- |
+| `RETROPLC_AC6_DIRECTORY` | Existing AC6 hosttools installation |
+| `RETROPLC_ZEPHYR_WORKSPACE` | West workspace directory |
+| `RETROPLC_ZEPHYR_APPLICATION` | Zephyr application directory |
+| `RETROPLC_ZEPHYR_SDK` | Selected SDK, ahead of `ZEPHYR_SDK_INSTALL_DIR` and the saved IDE selection |
+| `RETROPLC_ZEPHYR_BOARD` | Optional board target if the project has no selection |
+| `RETROPLC_ZEPHYR_SDK_ROOTS` | Additional SDK directories or parent directories, separated by the platform's PATH separator |
+
+The terminal and BuildHost use the west supplied by AC6. Select hosttools with
+`RETROPLC_AC6_DIRECTORY`. Set `RETROPLC_TOOLS_DIRECTORY` to override the
+application-managed `tools` directory. Relative overrides start at the
+application root.
+
+`ZephyrConfiguration.Sdks` exposes SDK discovery, selection and explicit
+installation through `IZephyrSdkService`. Discovery checks the home directory,
+application directory, application `.zephyr/sdks` directory, common Unix SDK roots and
+configured roots, including their immediate children. `GetBoardService` exposes workspace board
+discovery and validation through `IZephyrBoardService`. These APIs are ready
+for a Shell picker. The IDE never installs SDKs at startup. An interrupted
+`west sdk install` may leave a partial SDK in the requested directory.
+
+Run the BuildHost checks with `dotnet run --project RetroPLC.BuildHost.Tests`.
+The Linux tests use isolated fixtures for hosttools, west and the ST and
+firmware stages.
 
 ## Updating STruC++
 
-STruC++ is versioned through the `external/STruCpp` Git submodule. Updating
+STruC++ is versioned through the `tools/strucpp` Git submodule. Updating
 RetroPLC to another STruC++ release therefore means updating the submodule
 pointer to the desired upstream commit or tag and committing that pointer in
 the RetroPLC repository.
@@ -150,11 +190,11 @@ the RetroPLC repository.
 For example:
 
 ```shell
-cd external/STruCpp
+cd tools/strucpp
 git fetch --tags
 git checkout v0.6.4
 cd ../..
-git add external/STruCpp
+git add tools/strucpp
 git commit -m "Update STruC++ to v0.6.4"
 ```
 
@@ -166,16 +206,8 @@ rebuilds the compiler, libraries and language server from the local submodule.
 Run `./setup.sh` whenever managed dependencies are missing or after changing a
 pinned dependency such as the STruC++ submodule.
 
-Removing `Tools` forces a clean recreation of the managed toolchain and Zephyr
-workspace:
-
-```shell
-rm -rf Tools
-./setup.sh
-```
-
-This does not remove the Git submodules under `external/STruCpp` or
-`RetroPLC.Icons/Win98SE`.
+The `tools/strucpp` directory is the STruC++ submodule checkout. Keep it in place
+when rerunning setup.
 
 ## License
 

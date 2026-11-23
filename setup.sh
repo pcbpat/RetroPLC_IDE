@@ -5,15 +5,11 @@
 #
 # Source dependencies initialized by this script:
 #   - RetroPLC.Icons/Win98SE Git submodule
-#   - external/STruCpp Git submodule
+#   - tools/strucpp Git submodule
 #
-# Managed under RetroPLC_IDE/Tools:
+# Managed under RetroPLC_IDE/tools:
 #   - private Node.js runtime
-#   - private CPython runtime + venv
-#   - west, CMake and Ninja
-#   - built STruC++ compiler/LSP access via Tools/strucpp -> external/STruCpp
-#   - RetroPLC Runtime + private Zephyr west workspace
-#   - private Zephyr SDK with arm-zephyr-eabi toolchain and host tools/DTC
+#   - built STruC++ compiler and LSP in tools/strucpp (Git submodule)
 #   - mcumgrctl
 #
 # Remaining host dependencies:
@@ -23,6 +19,8 @@
 #   - basic POSIX shell utilities
 #   - sha256sum or shasum
 #
+# AC6 hosttools must already be installed in sibling .zinstaller/.
+# Zephyr workspaces and SDKs are deliberately NOT provisioned here.
 # Windows bootstrap is not implemented yet.
 
 set -euo pipefail
@@ -31,45 +29,28 @@ set -euo pipefail
 # Pinned versions
 # -----------------------------------------------------------------------------
 
-readonly RETROPLC_RUNTIME_REVISION="${RETROPLC_RUNTIME_REVISION:-main}"
-readonly RETROPLC_RUNTIME_REPOSITORY="${RETROPLC_RUNTIME_REPOSITORY:-https://github.com/pcbpat/RetroPLC_Runtime.git}"
-
 readonly MCUMGR_VERSION="0.16.0"
 readonly MCUMGR_REPOSITORY="Finomnis/mcumgr-toolkit"
 
 # STruC++ currently requires Node.js >= 22.
 readonly NODE_VERSION="22.23.2"
 
-readonly PYTHON_VERSION="3.12.14"
-readonly PYTHON_BUILD_RELEASE="20260825"
-readonly PYTHON_BUILD_REPOSITORY="astral-sh/python-build-standalone"
-
-readonly WEST_VERSION="1.5.0"
-readonly CMAKE_VERSION="3.31.10"
-readonly NINJA_VERSION="1.13.0"
-
 # -----------------------------------------------------------------------------
 # Paths
 # -----------------------------------------------------------------------------
 
 readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-readonly TOOLS_DIR="${SCRIPT_DIR}/Tools"
+readonly TOOLS_DIR="${SCRIPT_DIR}/tools"
+readonly AC6_DIR="${SCRIPT_DIR}/.zinstaller"
+readonly AC6_VENV="${AC6_DIR}/.venv"
+readonly AC6_ENV="${AC6_DIR}/env.sh"
 
-readonly STRUCPP_SOURCE_DIR="${SCRIPT_DIR}/external/STruCpp"
-readonly STRUCPP_TOOL_DIR="${TOOLS_DIR}/strucpp"
+readonly STRUCPP_SOURCE_DIR="${TOOLS_DIR}/strucpp"
 readonly STRUCPP_MARKER="${TOOLS_DIR}/.retroplc-strucpp-build"
 
 readonly MCUMGR_DIR="${TOOLS_DIR}/mcumgr"
 
-readonly TOOLCHAIN_DIR="${TOOLS_DIR}/toolchain"
-readonly NODE_DIR="${TOOLCHAIN_DIR}/node"
-readonly PYTHON_DIR="${TOOLCHAIN_DIR}/python"
-readonly PYTHON_VENV_DIR="${TOOLCHAIN_DIR}/venv"
-readonly ZEPHYR_WORKSPACE_DIR="${TOOLCHAIN_DIR}/zephyr-workspace"
-readonly RETROPLC_RUNTIME_DIR="${ZEPHYR_WORKSPACE_DIR}/RetroPLC_Runtime"
-readonly ZEPHYR_DIR="${ZEPHYR_WORKSPACE_DIR}/zephyr"
-readonly ZEPHYR_SDK_DIR="${TOOLCHAIN_DIR}/zephyr-sdk"
-
+readonly NODE_DIR="${TOOLS_DIR}/node"
 readonly TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/retroplc-setup.XXXXXX")"
 
 cleanup() {
@@ -77,7 +58,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-readonly TOTAL_STEPS=11
+readonly TOTAL_STEPS=7
 
 if [[ -t 1 ]]; then
     readonly COLOR_CYAN=$'\033[1;36m'
@@ -177,16 +158,12 @@ architecture="$(uname -m)"
 case "${platform}:${architecture}" in
     Linux:x86_64|Linux:amd64)
         node_platform="linux-x64"
-        python_target="x86_64-unknown-linux-gnu"
-        zephyr_sdk_platform="linux-x86_64"
         mcumgr_asset="mcumgrctl-linux"
         mcumgr_name="mcumgrctl"
         mcumgr_sha256="d2af9bd8843e108e7dbba43c03387c005e69f303d3cf9267aa5d2c796dcf7aeb"
         ;;
     Darwin:arm64|Darwin:aarch64)
         node_platform="darwin-arm64"
-        python_target="aarch64-apple-darwin"
-        zephyr_sdk_platform="macos-aarch64"
         mcumgr_asset="mcumgrctl-macos"
         mcumgr_name="mcumgrctl"
         mcumgr_sha256="a9cbfb44cfc0852db8c2713b1255116db5524d02b912fe0ab98aa02e2dccff0"
@@ -195,7 +172,7 @@ case "${platform}:${architecture}" in
         die "Linux ARM64 is not enabled because mcumgr-toolkit ${MCUMGR_VERSION} has no matching prebuilt release asset."
         ;;
     Darwin:x86_64|Darwin:amd64)
-        die "Intel macOS is not enabled because the validated Zephyr SDK and mcumgrctl assets are unavailable for this host."
+        die "Intel macOS is not enabled because the validated mcumgrctl asset is unavailable for this host."
         ;;
     MINGW*:*|MSYS*:*|CYGWIN*:*)
         die "Windows bootstrap is not implemented yet."
@@ -205,41 +182,98 @@ case "${platform}:${architecture}" in
         ;;
 esac
 
-mkdir -p "${TOOLS_DIR}" "${TOOLCHAIN_DIR}" "${MCUMGR_DIR}"
+# No managed dependency is created until the AC6 environment is validated.
 
-# Ignore externally configured Zephyr locations. RetroPLC uses only its private
-# workspace and private SDK below Tools.
-unset ZEPHYR_BASE || true
-unset ZEPHYR_SDK_INSTALL_DIR || true
+
+# -----------------------------------------------------------------------------
+# AC6 hosttools prerequisite (installed separately at repository level)
+# -----------------------------------------------------------------------------
+
+heading 2 "Checking AC6 .zinstaller environment"
+
+[[ -d "${AC6_DIR}" ]] || die "AC6 hosttools not found at ${AC6_DIR}. Install AC6 into the RetroPLC_IDE root first."
+[[ -f "${AC6_ENV}" ]] || die "AC6 environment file missing: ${AC6_ENV}"
+[[ -f "${AC6_DIR}/env.yml" ]] || die "AC6 environment metadata missing: ${AC6_DIR}/env.yml"
+[[ -f "${AC6_DIR}/env.py" ]] || die "AC6 environment loader missing: ${AC6_DIR}/env.py"
+[[ -x "${AC6_VENV}/bin/python" ]] || die "AC6 Python venv missing: ${AC6_VENV}/bin/python"
+[[ -x "${AC6_VENV}/bin/west" ]] || die "AC6 west missing: ${AC6_VENV}/bin/west"
+
+# Validate the configured AC6 tools inside a subshell.
+(
+    set +u
+    unset PYTHONHOME PYTHONPATH VIRTUAL_ENV
+    export PYTHON_VENV_PATH="${AC6_VENV}"
+    export PATH="${AC6_VENV}/bin:${PATH}"
+    if [[ "$(uname -s)" == Linux && ! -w /dev/fuse && -z "${APPIMAGE_EXTRACT_AND_RUN+x}" ]]; then
+        export APPIMAGE_EXTRACT_AND_RUN=1
+    fi
+
+    "${AC6_VENV}/bin/python" --version || die "AC6 Python failed to start at ${AC6_VENV}/bin/python"
+    source "${AC6_ENV}" || die "Could not load ${AC6_ENV}"
+    if [[ "${VIRTUAL_ENV:-}" != "${AC6_VENV}" ]]; then
+        source "${AC6_VENV}/bin/activate" || die "Could not activate ${AC6_VENV}"
+    fi
+    [[ "${VIRTUAL_ENV:-}" == "${AC6_VENV}" ]] || die "AC6 virtual environment points elsewhere. Check ${AC6_DIR}."
+
+    export PATH="${AC6_VENV}/bin:${PATH}"
+    for executable in cmake ninja; do
+        resolved="$(type -P "${executable}")" || die "Configure ${executable} in ${AC6_DIR}/env.yml"
+        resolved="$("${AC6_VENV}/bin/python" -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "${resolved}")" ||
+            die "Could not resolve AC6 ${executable}"
+        case "${resolved}" in
+            "${AC6_DIR}"/tools/*) ;;
+            *) die "${executable} resolves outside AC6 tools: ${resolved}" ;;
+        esac
+        info "${executable}: ${resolved}"
+        "${resolved}" --version || die "AC6 ${executable} failed to start"
+    done
+
+    "${AC6_VENV}/bin/west" --version || die "AC6 west failed to start"
+) || die "AC6 environment verification failed"
+
+mkdir -p "${TOOLS_DIR}" "${MCUMGR_DIR}"
 
 # -----------------------------------------------------------------------------
 # Source submodules
 # -----------------------------------------------------------------------------
 
-heading 2 "Initializing source submodules"
+heading 3 "Initializing source submodules"
 
 git -C "${SCRIPT_DIR}" rev-parse --show-toplevel >/dev/null 2>&1 || \
     die "RetroPLC_IDE must be a Git checkout."
 
-git -C "${SCRIPT_DIR}" submodule sync --recursive
-git -C "${SCRIPT_DIR}" submodule update --init --recursive \
-    RetroPLC.Icons/Win98SE \
-    external/STruCpp
+if ! git -C "${SCRIPT_DIR}" ls-files --stage -- tools/strucpp | grep -q '^160000 '; then
+    die "tools/strucpp is not registered as a Git submodule (mode 160000). Changing .gitmodules alone is insufficient; migrate the gitlink with git mv."
+fi
+
+if [[ -L "${STRUCPP_SOURCE_DIR}" ]]; then
+    die "tools/strucpp is still a symbolic link. Migrate the submodule to a real directory before running setup."
+fi
+
+# Ensure the .gitmodules path matches the tracked gitlink.
+if ! git -C "${SCRIPT_DIR}" config -f .gitmodules --get-regexp '^submodule\..*\.path$' \
+    | grep -Eq '[[:space:]]tools/strucpp$'; then
+    die "The .gitmodules configuration must contain a submodule with path = tools/strucpp."
+fi
+
+for submodule in RetroPLC.Icons/Win98SE tools/strucpp; do
+    checkout="${SCRIPT_DIR}/${submodule}"
+    if [[ ! -e "${checkout}/.git" ]]; then
+        git -C "${SCRIPT_DIR}" submodule update --init --recursive -- "${submodule}" ||
+            die "Could not initialize ${submodule}"
+    fi
+done
 
 [[ -f "${STRUCPP_SOURCE_DIR}/package.json" ]] || \
-    die "The STruC++ submodule was not initialized."
-
-# Preserve the existing RetroPLC tool lookup paths without maintaining a second
-# STruC++ checkout. The compiler, LSP, libs and runtime are used directly from
-# the pinned local submodule.
-rm -rf "${STRUCPP_TOOL_DIR}"
-ln -s "../external/STruCpp" "${STRUCPP_TOOL_DIR}"
+    die "The tools/strucpp submodule was not initialized."
+[[ -d "${STRUCPP_SOURCE_DIR}/.git" || -f "${STRUCPP_SOURCE_DIR}/.git" ]] || \
+    die "tools/strucpp is not a Git submodule checkout."
 
 # -----------------------------------------------------------------------------
 # Private Node.js runtime
 # -----------------------------------------------------------------------------
 
-heading 3 "Node.js ${NODE_VERSION}"
+heading 4 "Node.js ${NODE_VERSION}"
 
 readonly NODE_ARCHIVE="node-v${NODE_VERSION}-${node_platform}.tar.gz"
 readonly NODE_URL="https://nodejs.org/dist/v${NODE_VERSION}/${NODE_ARCHIVE}"
@@ -281,6 +315,7 @@ fi
 [[ "$("${NODE_BIN}" --version)" == "v${NODE_VERSION}" ]] || \
     die "Unexpected private Node.js version: $("${NODE_BIN}" --version)"
 [[ -f "${NPM_CLI}" ]] || die "Bundled npm CLI was not installed with Node.js."
+export PATH="${NODE_DIR}/bin:${PATH}"
 
 # -----------------------------------------------------------------------------
 # GitHub release helpers
@@ -341,99 +376,10 @@ process.stdout.write(`${asset.browser_download_url}|${digest}`);
 }
 
 # -----------------------------------------------------------------------------
-# Private CPython
-# -----------------------------------------------------------------------------
-
-heading 4 "Python ${PYTHON_VERSION}"
-
-python_is_current=false
-if [[ -x "${PYTHON_DIR}/bin/python3" ]] && \
-   [[ -f "${PYTHON_DIR}/.retroplc-python-build" ]] && \
-   [[ "$(cat "${PYTHON_DIR}/.retroplc-python-build")" == "${PYTHON_BUILD_RELEASE}:${PYTHON_VERSION}" ]]; then
-    python_existing_version="$(
-        "${PYTHON_DIR}/bin/python3" -c \
-            'import platform; print(platform.python_version())' \
-            2>/dev/null || true
-    )"
-    if [[ "${python_existing_version}" == "${PYTHON_VERSION}" ]]; then
-        python_is_current=true
-    fi
-fi
-
-if [[ "${python_is_current}" == false ]]; then
-    info "Installing private Python ${PYTHON_VERSION}"
-
-    python_asset="cpython-${PYTHON_VERSION}+${PYTHON_BUILD_RELEASE}-${python_target}-install_only_stripped.tar.gz"
-    python_archive_path="${TMP_DIR}/${python_asset}"
-
-    download_github_release_asset \
-        "${PYTHON_BUILD_REPOSITORY}" \
-        "${PYTHON_BUILD_RELEASE}" \
-        "${python_asset}" \
-        "${python_archive_path}"
-
-    rm -rf "${PYTHON_DIR}"
-    mkdir -p "${PYTHON_DIR}"
-    tar -xzf "${python_archive_path}" -C "${PYTHON_DIR}" --strip-components=1
-
-    printf '%s\n' "${PYTHON_BUILD_RELEASE}:${PYTHON_VERSION}" > \
-        "${PYTHON_DIR}/.retroplc-python-build"
-fi
-
-readonly PYTHON_BIN="${PYTHON_DIR}/bin/python3"
-[[ -x "${PYTHON_BIN}" ]] || die "Private Python executable was not installed."
-
-python_full_version="$("${PYTHON_BIN}" -c 'import platform; print(platform.python_version())')"
-[[ "${python_full_version}" == "${PYTHON_VERSION}" ]] || \
-    die "Expected Python ${PYTHON_VERSION}, found ${python_full_version}."
-
-# -----------------------------------------------------------------------------
-# Private Python venv + west + CMake + Ninja
-# -----------------------------------------------------------------------------
-
-heading 5 "west ${WEST_VERSION} + CMake ${CMAKE_VERSION} + Ninja ${NINJA_VERSION}"
-
-readonly VENV_MARKER_VALUE="${PYTHON_BUILD_RELEASE}:${PYTHON_VERSION}:${WEST_VERSION}:${CMAKE_VERSION}:${NINJA_VERSION}"
-readonly VENV_MARKER="${PYTHON_VENV_DIR}/.retroplc-toolchain-version"
-
-venv_recreate=false
-if [[ ! -x "${PYTHON_VENV_DIR}/bin/python" ]] || \
-   [[ ! -f "${VENV_MARKER}" ]] || \
-   [[ "$(cat "${VENV_MARKER}" 2>/dev/null || true)" != "${VENV_MARKER_VALUE}" ]]; then
-    venv_recreate=true
-fi
-
-if [[ "${venv_recreate}" == true ]]; then
-    info "Creating private RetroPLC Python environment"
-
-    rm -rf "${PYTHON_VENV_DIR}"
-    "${PYTHON_BIN}" -m venv "${PYTHON_VENV_DIR}"
-
-    "${PYTHON_VENV_DIR}/bin/python" -m pip install \
-        --disable-pip-version-check \
-        "west==${WEST_VERSION}" \
-        "cmake==${CMAKE_VERSION}" \
-        "ninja==${NINJA_VERSION}"
-
-    printf '%s\n' "${VENV_MARKER_VALUE}" > "${VENV_MARKER}"
-fi
-
-readonly WEST="${PYTHON_VENV_DIR}/bin/west"
-readonly CMAKE="${PYTHON_VENV_DIR}/bin/cmake"
-readonly NINJA="${PYTHON_VENV_DIR}/bin/ninja"
-
-[[ -x "${WEST}" ]] || die "west was not installed into the private venv."
-[[ -x "${CMAKE}" ]] || die "CMake was not installed into the private venv."
-[[ -x "${NINJA}" ]] || die "Ninja was not installed into the private venv."
-
-export VIRTUAL_ENV="${PYTHON_VENV_DIR}"
-export PATH="${NODE_DIR}/bin:${PYTHON_VENV_DIR}/bin:${PATH}"
-
-# -----------------------------------------------------------------------------
 # Build STruC++ from the pinned local submodule
 # -----------------------------------------------------------------------------
 
-heading 6 "Building STruC++ from external/STruCpp"
+heading 5 "Building STruC++ from tools/strucpp"
 
 readonly STRUCPP_COMPILER="${STRUCPP_SOURCE_DIR}/dist/node/cli.js"
 readonly STRUCPP_SERVER="${STRUCPP_SOURCE_DIR}/vscode-extension/out/server/src/server.js"
@@ -488,16 +434,16 @@ strucpp_reported_version="$(
     die "Unexpected STruC++ compiler version output: ${strucpp_reported_version}"
 
 # Existing RetroPLC hosts can continue resolving:
-#   Tools/strucpp/dist/node/cli.js
-#   Tools/strucpp/vscode-extension/out/server/src/server.js
-#   Tools/strucpp/libs
-# because Tools/strucpp is a symlink to external/STruCpp.
+#   tools/strucpp/dist/node/cli.js
+#   tools/strucpp/vscode-extension/out/server/src/server.js
+#   tools/strucpp/libs
+# The actual Git submodule checkout is directly in tools/strucpp.
 
 # -----------------------------------------------------------------------------
 # mcumgrctl
 # -----------------------------------------------------------------------------
 
-heading 7 "mcumgrctl ${MCUMGR_VERSION}"
+heading 6 "mcumgrctl ${MCUMGR_VERSION}"
 
 readonly MCUMGR_OUTPUT="${MCUMGR_DIR}/${mcumgr_name}"
 readonly MCUMGR_MARKER="${MCUMGR_DIR}/.retroplc-mcumgr-version"
@@ -528,139 +474,19 @@ if [[ "${mcumgr_is_current}" == false ]]; then
 fi
 
 # -----------------------------------------------------------------------------
-# Managed RetroPLC Runtime + private Zephyr west workspace
-# -----------------------------------------------------------------------------
-
-heading 8 "RetroPLC Runtime ${RETROPLC_RUNTIME_REVISION}"
-
-mkdir -p "${ZEPHYR_WORKSPACE_DIR}"
-
-if [[ ! -d "${RETROPLC_RUNTIME_DIR}/.git" ]]; then
-    rm -rf "${RETROPLC_RUNTIME_DIR}"
-    git clone --filter=blob:none --no-checkout \
-        "${RETROPLC_RUNTIME_REPOSITORY}" \
-        "${RETROPLC_RUNTIME_DIR}"
-else
-    git -C "${RETROPLC_RUNTIME_DIR}" remote set-url \
-        origin "${RETROPLC_RUNTIME_REPOSITORY}"
-fi
-
-git -C "${RETROPLC_RUNTIME_DIR}" fetch \
-    --depth 1 origin "${RETROPLC_RUNTIME_REVISION}"
-git -C "${RETROPLC_RUNTIME_DIR}" checkout --detach --force FETCH_HEAD
-
-# Explicitly create the private nested west workspace. This prevents an older
-# parent workspace (for example ~/RetroPLC/.west) from becoming RetroPLC's
-# active west topdir.
-mkdir -p "${ZEPHYR_WORKSPACE_DIR}/.west"
-cat > "${ZEPHYR_WORKSPACE_DIR}/.west/config" <<'WEST_CONFIG'
-[manifest]
-path = RetroPLC_Runtime
-file = west.yml
-WEST_CONFIG
-
-# -----------------------------------------------------------------------------
-# Zephyr + required modules + Python packages
-# -----------------------------------------------------------------------------
-
-heading 9 "Zephyr workspace + required modules"
-
-(
-    cd "${ZEPHYR_WORKSPACE_DIR}"
-    "${WEST}" update
-)
-
-[[ -d "${ZEPHYR_DIR}/.git" ]] || \
-    die "Zephyr was not installed into ${ZEPHYR_WORKSPACE_DIR}."
-
-(
-    cd "${ZEPHYR_WORKSPACE_DIR}"
-    "${WEST}" packages pip --install
-)
-
-# -----------------------------------------------------------------------------
-# Private Zephyr SDK
-# -----------------------------------------------------------------------------
-
-heading 10 "Private Zephyr SDK"
-
-sdk_expected_version="$(head -n 1 "${ZEPHYR_DIR}/SDK_VERSION" | tr -d '[:space:]')"
-[[ -n "${sdk_expected_version}" ]] || \
-    die "Could not determine Zephyr SDK version from ${ZEPHYR_DIR}/SDK_VERSION."
-
-readonly ZEPHYR_SDK_ARCHIVE="zephyr-sdk-${sdk_expected_version}_${zephyr_sdk_platform}_minimal.tar.xz"
-readonly ZEPHYR_SDK_GCC="${ZEPHYR_SDK_DIR}/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
-
-sdk_is_current=false
-if [[ -f "${ZEPHYR_SDK_DIR}/sdk_version" ]] && \
-   [[ "$(head -n 1 "${ZEPHYR_SDK_DIR}/sdk_version" | tr -d '[:space:]')" == "${sdk_expected_version}" ]] && \
-   [[ -x "${ZEPHYR_SDK_GCC}" ]]; then
-    sdk_is_current=true
-fi
-
-if [[ "${sdk_is_current}" == false ]]; then
-    info "Installing private Zephyr SDK ${sdk_expected_version} into ${ZEPHYR_SDK_DIR}"
-
-    zephyr_sdk_archive_path="${TMP_DIR}/${ZEPHYR_SDK_ARCHIVE}"
-
-    download_github_release_asset \
-        "zephyrproject-rtos/sdk-ng" \
-        "v${sdk_expected_version}" \
-        "${ZEPHYR_SDK_ARCHIVE}" \
-        "${zephyr_sdk_archive_path}"
-
-    rm -rf "${ZEPHYR_SDK_DIR}"
-    mkdir -p "${ZEPHYR_SDK_DIR}"
-
-    tar -xJf "${zephyr_sdk_archive_path}" \
-        -C "${ZEPHYR_SDK_DIR}" \
-        --strip-components=1
-
-    [[ -x "${ZEPHYR_SDK_DIR}/setup.sh" ]] || \
-        die "The Zephyr SDK setup executable was not installed."
-
-    # Install only the ARM GNU toolchain required for the Opta plus host tools.
-    # Host tools include DTC. No SDK outside Tools is discovered or reused.
-    "${ZEPHYR_SDK_DIR}/setup.sh" -t arm-zephyr-eabi -h
-fi
-
-[[ -x "${ZEPHYR_SDK_GCC}" ]] || \
-    die "The private Zephyr ARM toolchain was not installed."
-
-dtc_bin="$(
-    find "${ZEPHYR_SDK_DIR}/hosttools" \
-        -type f \
-        -path '*/usr/bin/dtc' \
-        -print \
-        -quit
-)"
-[[ -x "${dtc_bin}" ]] || \
-    die "The private Zephyr SDK DTC executable was not installed."
-
-export ZEPHYR_SDK_INSTALL_DIR="${ZEPHYR_SDK_DIR}"
-
-dtc_version="$("${dtc_bin}" --version 2>&1)"
-
-# -----------------------------------------------------------------------------
 # Final verification
 # -----------------------------------------------------------------------------
 
-heading 11 "Verifying RetroPLC setup"
+heading 7 "Verifying RetroPLC setup"
 
 echo "  Node:           $("${NODE_BIN}" --version)"
-echo "  Python:         ${python_full_version}"
-echo "  west:           $("${WEST}" --version)"
-echo "  CMake:          $("${CMAKE}" --version | head -n 1)"
-echo "  Ninja:          $("${NINJA}" --version)"
-echo "  DTC:            ${dtc_version}"
 echo "  STruC++:        ${strucpp_version} (${strucpp_commit:0:12})"
 echo "  STruC++ source: ${STRUCPP_SOURCE_DIR}"
-echo "  Runtime:        $(git -C "${RETROPLC_RUNTIME_DIR}" rev-parse --short=12 HEAD)"
-echo "  Zephyr:         $(git -C "${ZEPHYR_DIR}" rev-parse --short=12 HEAD)"
-echo "  Zephyr SDK:     ${sdk_expected_version} (${ZEPHYR_SDK_DIR})"
 echo "  mcumgrctl:      ${MCUMGR_OUTPUT}"
 echo
 echo "System dependencies still required: git, curl, tar and basic POSIX utilities."
-echo "Node, Python, west, CMake, Ninja, the Zephyr workspace, Zephyr SDK, DTC and mcumgrctl are RetroPLC-managed under Tools."
+echo "Node.js, STruC++ and mcumgrctl are managed under tools/."
+echo "AC6 hosttools:    ${AC6_DIR}"
+echo "Use .zephyr/ for separately provisioned Zephyr workspaces and SDKs."
 echo "STruC++ and Win98SE are pinned Git submodules inside the RetroPLC_IDE checkout."
 success "RetroPLC setup completed successfully."

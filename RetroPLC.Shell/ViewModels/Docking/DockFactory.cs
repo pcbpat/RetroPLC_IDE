@@ -30,6 +30,7 @@ public sealed class DockFactory : Factory
     private IRootDock? _rootDock;
     private IDocumentDock? _documentDock;
     private IToolDock? _terminalDock;
+    private readonly ZephyrConfiguration _zephyr = new();
     private BuildViewModel? _buildTool;
     private ReferencesViewModel? _referencesTool;
     private MessagesViewModel? _messagesTool;
@@ -76,7 +77,7 @@ public sealed class DockFactory : Factory
             tool1.LoadProject(_currentProject, _projectDirectory);
             tool1.SetDocumentSymbols(_currentProject, _projectDirectory, _projectSymbols);
         }
-        var tool6 = new BuildViewModel
+        var tool6 = new BuildViewModel(new FirmwareBuildService(_zephyr))
         {
             Id = "Build",
             Title = "Build",
@@ -762,7 +763,7 @@ public sealed class DockFactory : Factory
         }
 
         var number = ++_terminalNumber;
-        var terminal = new TerminalViewModel
+        var terminal = new TerminalViewModel(_zephyr, _projectDirectory, _currentProject?.Zephyr)
         {
             Id = $"Terminal-{number}",
             Title = $"Terminal {number}",
@@ -934,6 +935,8 @@ public sealed class DockFactory : Factory
 
     public event Action<BuildOperation, int>? BuildOperationExited;
 
+    public string? BuildOperationError => _buildTool?.OperationError;
+
     private void OnBuildOperationExited(BuildOperation operation, int exitCode)
     {
         Dispatcher.UIThread.Post(() =>
@@ -954,16 +957,16 @@ public sealed class DockFactory : Factory
         tool.PrepareVerify(directory, project.Name));
 
     public void Build() => RunBuildTool((tool, directory, project) =>
-        tool.PrepareBuild(directory, project.Name));
+        tool.PrepareBuild(directory, project.Name, project.Zephyr));
 
     public void Rebuild() => RunBuildTool((tool, directory, project) =>
-        tool.PrepareRebuild(directory, project.Name));
+        tool.PrepareRebuild(directory, project.Name, project.Zephyr));
 
-    public void Clean() => RunBuildTool((tool, directory, _) =>
-        tool.PrepareClean(directory));
+    public void Clean() => RunBuildTool((tool, directory, project) =>
+        tool.PrepareClean(directory, project.Zephyr));
 
     public void Download() => RunBuildTool((tool, directory, project) =>
-        tool.PrepareDownload(directory, project.Name));
+        tool.PrepareDownload(directory, project.Name, project.Zephyr));
 
     private void RunBuildTool(Action<BuildViewModel, string, ProjectDocument> prepare)
     {
