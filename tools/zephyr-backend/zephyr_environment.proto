@@ -1,0 +1,17 @@
+syntax = "proto3";
+package retroplc.zephyr.v1;
+option csharp_namespace = "RetroPLC.BuildHost.ZephyrBackend.Protocol";
+import "google/protobuf/struct.proto";
+
+service ZephyrEnvironment {
+  rpc GetWorkspaceInfo(google.protobuf.Struct) returns (google.protobuf.Struct);
+  rpc GetProjects(google.protobuf.Struct) returns (google.protobuf.Struct);
+  rpc GetWestConfig(google.protobuf.Struct) returns (google.protobuf.Struct);
+  rpc ValidateWorkspace(google.protobuf.Struct) returns (google.protobuf.Struct);
+  // Kept only for wire compatibility; these return UNIMPLEMENTED.
+  rpc ResolveConfiguration(google.protobuf.Struct) returns (google.protobuf.Struct);
+  rpc ListBoards(google.protobuf.Struct) returns (google.protobuf.Struct);
+  rpc ValidateBoard(google.protobuf.Struct) returns (google.protobuf.Struct);
+  rpc ValidateSdk(google.protobuf.Struct) returns (google.protobuf.Struct);
+  rpc ResolveTerminal(google.protobuf.Struct) returns (google.protobuf.Struct);
+}

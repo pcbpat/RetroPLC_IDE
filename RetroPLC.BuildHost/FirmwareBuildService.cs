@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+using System.Text.Json;
 using RetroPLC.LanguageServerHost;
 
 namespace RetroPLC.BuildHost;
@@ -29,6 +30,7 @@ public sealed class FirmwareBuildSession
     private readonly ZephyrBuildContext? _zephyrContext;
     private readonly BuildProcess? _zephyrProcess;
     private BuildStage _stage;
+    private byte[]? _debugMap;
 
     internal FirmwareBuildSession(
         FirmwareBuildService service,
@@ -60,8 +62,16 @@ public sealed class FirmwareBuildSession
             _stage == BuildStage.StructuredText &&
             _zephyrProcess is { } zephyrProcess)
         {
-            _stage = BuildStage.Zephyr;
-            return new BuildProcessOutcome(zephyrProcess, null);
+            try
+            {
+                _debugMap = FirmwareBuildService.ReadGeneratedDebugMap(_zephyrContext!);
+                _stage = BuildStage.Zephyr;
+                return new BuildProcessOutcome(zephyrProcess, null);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+            {
+                return Complete(-1) with { ErrorMessage = exception.Message };
+            }
         }
 
         if (Operation is BuildOperation.Build or BuildOperation.Rebuild or BuildOperation.Download &&
@@ -70,7 +80,7 @@ public sealed class FirmwareBuildSession
         {
             try
             {
-                FirmwareBuildService.PublishBuildArtifacts(completedContext);
+                FirmwareBuildService.PublishBuildArtifacts(completedContext, _debugMap!);
 
                 if (Operation == BuildOperation.Download)
                 {
@@ -119,7 +129,7 @@ public sealed class FirmwareBuildService : IAsyncDisposable
         new(
             this,
             BuildOperation.Verify,
-            CreateStrucppCompilerProcess(projectDirectory, projectName),
+            CreateStrucppCompilerProcess(projectDirectory),
             BuildStage.StructuredText,
             null);
 
@@ -131,7 +141,7 @@ public sealed class FirmwareBuildService : IAsyncDisposable
         return new FirmwareBuildSession(
             this,
             BuildOperation.Build,
-            CreateStrucppCompilerProcess(projectDirectory, projectName),
+            CreateStrucppCompilerProcess(projectDirectory),
             BuildStage.StructuredText,
             context,
             context.Settings.PristineMode!);
@@ -145,7 +155,7 @@ public sealed class FirmwareBuildService : IAsyncDisposable
         return new FirmwareBuildSession(
             this,
             BuildOperation.Rebuild,
-            CreateStrucppCompilerProcess(projectDirectory, projectName),
+            CreateStrucppCompilerProcess(projectDirectory),
             BuildStage.StructuredText,
             context,
             "always");
@@ -174,46 +184,25 @@ public sealed class FirmwareBuildService : IAsyncDisposable
         return new FirmwareBuildSession(
             this,
             BuildOperation.Download,
-            CreateStrucppCompilerProcess(projectDirectory, projectName),
+            CreateStrucppCompilerProcess(projectDirectory),
             BuildStage.StructuredText,
             context,
             context.Settings.PristineMode!);
     }
 
-    private BuildProcess CreateStrucppCompilerProcess(
-        string projectDirectory,
-        string projectName)
+    private BuildProcess CreateStrucppCompilerProcess(string projectDirectory)
     {
         projectDirectory = GetProjectDirectory(projectDirectory);
-        var compiler = StrucppToolchain.GetCompilerCommand();
-
-        var sourceRoot = Path.Combine(projectDirectory, "ProjectFiles");
-        var sourcePaths = Directory.Exists(sourceRoot)
-            ? Directory.EnumerateFiles(sourceRoot, "*.st", SearchOption.AllDirectories)
-                .Select(path => Path.GetRelativePath(projectDirectory, path))
-                .Where(path => !IsTestSource(path))
-                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-                .ToList()
-            : [];
-
-        Directory.CreateDirectory(Path.Combine(projectDirectory, "Build", "Generated"));
-        var outputPath = Path.Combine(
-            "Build",
-            "Generated",
-            $"{MakeSafeFileName(projectName)}.cpp");
-
-        var arguments = new List<string>(compiler.PrefixArguments);
-        arguments.AddRange(sourcePaths);
-        arguments.AddRange(
+        var compiler = StrucppToolchain.GetNativeCompilerCommand(
+            Configuration.Environment.Installation.ApplicationDirectory);
+        return new BuildProcess(compiler.ExecutablePath,
         [
-            "-o",
-            outputPath,
-            "--no-default-libs",
-            "-L",
-            "Libraries"
-        ]);
-
-        return CreatePlatformProcess(compiler.ExecutablePath, arguments, projectDirectory);
+            .. compiler.PrefixArguments,
+            Path.Combine(projectDirectory, "Build", "Generated"),
+            Path.Combine(projectDirectory, "ProjectFiles"),
+            "--lib-dir", StrucppToolchain.GetProjectLibraryDirectory(projectDirectory),
+            "--no-default-libs"
+        ], projectDirectory);
     }
 
     internal BuildProcess CreateZephyrBuildProcess(ZephyrBuildContext context, string pristineMode)
@@ -319,7 +308,25 @@ public sealed class FirmwareBuildService : IAsyncDisposable
             settings);
     }
 
-    internal static void PublishBuildArtifacts(ZephyrBuildContext context)
+    internal static byte[] ReadGeneratedDebugMap(ZephyrBuildContext context)
+    {
+        var path = Path.Combine(context.GeneratedDirectory, "debug_map.json");
+        var bytes = File.ReadAllBytes(path);
+        using var document = JsonDocument.Parse(bytes);
+        var root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object ||
+            !root.TryGetProperty("version", out var version) || version.ValueKind != JsonValueKind.Number ||
+            !version.TryGetInt32(out var value) || value != 2 ||
+            !root.TryGetProperty("md5", out var identity) || identity.ValueKind != JsonValueKind.String ||
+            identity.GetString() is not { Length: 32 } ||
+            !root.TryGetProperty("arrays", out var arrays) || arrays.ValueKind != JsonValueKind.Array ||
+            !root.TryGetProperty("leaves", out var leaves) || leaves.ValueKind != JsonValueKind.Array)
+            throw new IOException($"The generated debug map at '{path}' is incomplete.");
+
+        return bytes;
+    }
+
+    internal static void PublishBuildArtifacts(ZephyrBuildContext context, byte[] debugMap)
     {
         var imageBuildDirectory = context.Settings.UseSysbuild!.Value
             ? Path.Combine(context.BuildDirectory, context.ApplicationName)
@@ -334,36 +341,54 @@ public sealed class FirmwareBuildService : IAsyncDisposable
             (Source: "zephyr.map", Destination: "firmware.map")
         };
 
-        Directory.CreateDirectory(context.ArtifactsDirectory);
-        foreach (var artifact in artifacts)
-        {
-            var sourcePath = Path.Combine(zephyrOutputDirectory, artifact.Source);
-            var destinationPath = Path.Combine(context.ArtifactsDirectory, artifact.Destination);
-            if (File.Exists(destinationPath))
-                File.Delete(destinationPath);
-            if (!File.Exists(sourcePath))
-                continue;
+        if (!File.ReadAllBytes(Path.Combine(context.GeneratedDirectory, "debug_map.json")).AsSpan().SequenceEqual(debugMap))
+            throw new IOException("Generated debug symbols changed during the firmware build. Rebuild the project.");
 
-            File.Copy(sourcePath, destinationPath, overwrite: true);
+        var destination = context.ArtifactsDirectory;
+        // Move the complete set within the project filesystem, including on
+        // installations where the system temporary directory is on another disk.
+        var publication = Path.Combine(context.ProjectBuildDirectory, ".artifacts-" + Guid.NewGuid().ToString("N"));
+        var next = Path.Combine(publication, "new");
+        var previous = Path.Combine(publication, "previous");
+        var preserveBackup = false;
+        try
+        {
+            Directory.CreateDirectory(next);
+            foreach (var artifact in artifacts)
+            {
+                var source = Path.Combine(zephyrOutputDirectory, artifact.Source);
+                if (File.Exists(source) || artifact.Source == "zephyr.elf")
+                    File.Copy(source, Path.Combine(next, artifact.Destination));
+            }
+            File.WriteAllBytes(Path.Combine(next, "debug_map.json"), debugMap);
+
+            var hadPrevious = Directory.Exists(destination);
+            if (hadPrevious)
+                Directory.Move(destination, previous);
+            try
+            {
+                Directory.Move(next, destination);
+            }
+            catch
+            {
+                if (hadPrevious)
+                {
+                    preserveBackup = true;
+                    Directory.Move(previous, destination);
+                    preserveBackup = false;
+                }
+                throw;
+            }
+        }
+        finally
+        {
+            if (!preserveBackup && Directory.Exists(publication))
+                Directory.Delete(publication, recursive: true);
         }
     }
 
     private string GetProjectDirectory(string projectDirectory) =>
         Path.GetFullPath(projectDirectory, Configuration.Environment.Installation.ApplicationDirectory);
-
-    private static bool IsTestSource(string relativePath) =>
-        relativePath.StartsWith(
-            $"ProjectFiles{Path.DirectorySeparatorChar}Tests{Path.DirectorySeparatorChar}",
-            StringComparison.OrdinalIgnoreCase) ||
-        relativePath.StartsWith("ProjectFiles/Tests/", StringComparison.OrdinalIgnoreCase);
-
-    private static string MakeSafeFileName(string projectName)
-    {
-        var invalidCharacters = Path.GetInvalidFileNameChars();
-        return new string(projectName
-            .Select(character => invalidCharacters.Contains(character) ? '_' : character)
-            .ToArray());
-    }
 
     private static string MakeSafeDirectoryName(string value)
     {

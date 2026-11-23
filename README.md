@@ -143,6 +143,17 @@ optional fields are `applicationDirectory`, `buildDirectory` and
 `hostToolsDirectory`. The default build directory is below `Build/Zephyr` in
 the project. Clean removes the project's `Build` tree.
 
+BuildHost invokes `tools/generate-strucpp-debug.mjs` with managed Node.js.
+The helper compiles once using the STruC++ API and writes `generated.hpp`,
+the translation units, `generated_debug.cpp`, and `debug_map.json` under
+`Build/Generated`. A successful Zephyr build publishes the debug map with its
+firmware in `Build/Artifacts`. Verify only changes the generated source set.
+
+Setup applies `tools/retroplc-runtime-debug.patch` to its Runtime checkout. It
+gives the scan cycle and the debug pointer table one shared PLC configuration.
+Apply the same patch to a compatible custom Runtime checkout before building
+with it. Firmware monitoring over SMP is a separate integration.
+
 Settings apply in this order, from highest to lowest precedence.
 
 1. Explicit per-operation BuildHost overrides.

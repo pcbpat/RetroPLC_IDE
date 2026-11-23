@@ -45,6 +45,17 @@ public static class StrucppToolchain
     public static StrucppToolCommand GetCompilerCommand() =>
         CreateNodeCommand(GetCompilerPath(), "compiler");
 
+    public static StrucppToolCommand GetNativeCompilerCommand(string installationDirectory)
+    {
+        var module = Path.Combine(CompilerDirectory, "index.js");
+        var command = CreateNodeCommand(module, "compiled API");
+        var helper = Path.Combine(installationDirectory, "tools", "generate-strucpp-debug.mjs");
+        if (!File.Exists(helper))
+            throw new FileNotFoundException($"The RetroPLC STruC++ build helper was not found at '{helper}'.", helper);
+
+        return new StrucppToolCommand(command.ExecutablePath, [helper, StrucppDirectory]);
+    }
+
     public static StrucppToolCommand GetLanguageServerCommand() =>
         CreateNodeCommand(GetLanguageServerPath(), "language server");
 

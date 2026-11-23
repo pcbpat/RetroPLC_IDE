@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 using System.Diagnostics;
+using System.Text.Json;
 using RetroPLC.BuildHost;
 using RetroPLC.LanguageServerHost;
 
@@ -26,6 +27,7 @@ if (args is ["--live", var liveProject])
     Check(!Directory.Exists(Path.Combine(projectPath, "Build")), "live clean removed build output");
     await RunSessionAsync(await live.StartRebuildAsync(projectPath, "Test"));
     Check(File.Exists(Path.Combine(projectPath, "Build", "Artifacts", "firmware.bin")), "live rebuild published firmware");
+    CheckDebugMap(Path.Combine(projectPath, "Build", "Artifacts", "debug_map.json"));
 
     var missing = await ExpectAsync<DirectoryNotFoundException>(() => live.StartBuildAsync(projectPath, "Test",
         overrides: new() { SdkDirectory = "missing-sdk" }));
@@ -251,16 +253,41 @@ try
 
     var tools = Directory.CreateDirectory(Path.Combine(root, "strucpp-tools")).FullName;
     Environment.SetEnvironmentVariable("RETROPLC_TOOLS_DIRECTORY", tools);
-    var missingNode = Expect<FileNotFoundException>(() => StrucppToolchain.GetCompilerCommand());
-    Check(missingNode.Message.Contains(Path.Combine(tools, "node", "bin", "node")), "missing private Node diagnostic");
+    var helper = Path.Combine(development.ApplicationDirectory, "tools", "generate-strucpp-debug.mjs");
+    File.Copy(helper, Path.Combine(root, "tools", Path.GetFileName(helper)));
+    var missingNode = Expect<FileNotFoundException>(() => StrucppToolchain.GetNativeCompilerCommand(root));
     var node = Path.Combine(tools, "node", "bin", "node");
-    WriteExecutable(node, "echo 'ST compiler fixture'");
-    var missingCompiler = Expect<FileNotFoundException>(() => StrucppToolchain.GetCompilerCommand());
-    Check(missingCompiler.Message.Contains("tools/strucpp"), "missing compiler diagnostic");
-    var missingServer = Expect<FileNotFoundException>(() => StrucppToolchain.GetLanguageServerCommand());
-    Check(missingServer.Message.Contains("language server"), "missing language-server diagnostic");
-    Directory.CreateDirectory(Path.Combine(tools, "strucpp", "dist", "node"));
-    File.WriteAllText(Path.Combine(tools, "strucpp", "dist", "node", "cli.js"), "// fixture");
+    Check(missingNode.FileName == node, "missing private Node diagnostic");
+    Directory.CreateDirectory(Path.GetDirectoryName(node)!);
+    File.CreateSymbolicLink(node, Path.Combine(development.ApplicationDirectory, "tools", "node", "bin", "node"));
+    var missingCompiler = Expect<FileNotFoundException>(() => StrucppToolchain.GetNativeCompilerCommand(root));
+    Check(missingCompiler.FileName == Path.Combine(tools, "strucpp", "dist", "node", "index.js"), "missing native API diagnostic");
+    Directory.CreateSymbolicLink(Path.Combine(tools, "strucpp"), Path.Combine(development.ApplicationDirectory, "tools", "strucpp"));
+
+    var sourceDirectory = Directory.CreateDirectory(Path.Combine(project, "ProjectFiles")).FullName;
+    var nested = Directory.CreateDirectory(Path.Combine(sourceDirectory, "POUs", "Programs")).FullName;
+    var tests = Directory.CreateDirectory(Path.Combine(sourceDirectory, "Tests")).FullName;
+    File.WriteAllText(Path.Combine(tests, "ignored.st"), "INVALID TEST SOURCE");
+    var plcSource = Path.Combine(nested, "Main.st");
+    File.WriteAllText(plcSource, """
+        PROGRAM Main
+        VAR
+            Counter : INT;
+        END_VAR
+        Counter := Counter + 1;
+        END_PROGRAM
+        """);
+    File.WriteAllText(Path.Combine(sourceDirectory, "Configuration.st"), """
+        CONFIGURATION Configuration1
+            RESOURCE PLC_CPU ON PLC
+                TASK MainTask(INTERVAL := T#100ms, PRIORITY := 1);
+                PROGRAM MainInst WITH MainTask : Main;
+            END_RESOURCE
+        END_CONFIGURATION
+        """);
+    var libraries = Directory.CreateDirectory(Path.Combine(project, "Libraries")).FullName;
+    File.Copy(Path.Combine(development.ApplicationDirectory, "tools", "strucpp", "libs", "iec-std-functions.stlib"),
+        Path.Combine(libraries, "iec-std-functions.stlib"));
     WriteExecutable(Path.Combine(tools, "mcumgr", "mcumgrctl"), "echo 'Firmware updater fixture'");
 
     var service = new FirmwareBuildService(config);
@@ -282,6 +309,50 @@ try
         overrides: new() { WorkspaceDirectory = "missing-workspace" }));
     await ExpectAsync<DirectoryNotFoundException>(() => defaultBuild.StartBuildAsync(project, "Test",
         overrides: new() { SdkDirectory = "missing-sdk" }));
+    var verify = service.StartVerify(project, "Test");
+    var verified = await RunAsync(verify.InitialProcess);
+    Check(verified.ExitCode == 0 && verify.ProcessExited(0).ExitCode == 0, $"ST verification stage: {verified.Error}");
+    var generated = Path.Combine(project, "Build", "Generated");
+    var generatedMap = Path.Combine(generated, "debug_map.json");
+    CheckDebugMap(generatedMap);
+    Check(File.Exists(Path.Combine(generated, "generated.hpp")) &&
+          File.Exists(Path.Combine(generated, "configuration.cpp")) &&
+          File.Exists(Path.Combine(generated, "pou_MAIN.cpp")) &&
+          File.ReadAllText(Path.Combine(generated, "generated_debug.cpp")).Contains("&g_config", StringComparison.Ordinal),
+        "native header, translation units and pointer table");
+    var initialMap = File.ReadAllText(generatedMap);
+    var stale = Path.Combine(generated, "stale.cpp");
+    File.WriteAllText(stale, "obsolete fixture");
+    var invalidSource = Path.Combine(nested, "Invalid.st");
+    File.WriteAllText(invalidSource, "PROGRAM VAR ???");
+    var invalidCompilation = await service.StartDownloadAsync(project, "Test", settings);
+    var compileFailure = await RunAsync(invalidCompilation.InitialProcess);
+    Check(compileFailure.ExitCode != 0 && compileFailure.Error.Contains("Error:", StringComparison.Ordinal) &&
+          invalidCompilation.ProcessExited(compileFailure.ExitCode) is { NextProcess: null },
+        "compiler diagnostics and failed download preparation");
+    Check(File.Exists(stale) && File.ReadAllText(generatedMap) == initialMap,
+        "failed compilation preserves the previous generated set");
+    File.Delete(invalidSource);
+    var delayedImport = Path.Combine(root, "delay-native-compiler.mjs");
+    File.WriteAllText(delayedImport, "await new Promise(resolve => setTimeout(resolve, 10000));");
+    var delayedCompiler = verify.InitialProcess with
+    {
+        Arguments = ["--import", delayedImport, .. verify.InitialProcess.Arguments]
+    };
+    await ExpectAsync<OperationCanceledException>(() => RunAsync(delayedCompiler, timeoutSeconds: 1));
+    Check(File.Exists(stale) && File.ReadAllText(generatedMap) == initialMap,
+        "terminating the Node process preserves the previous generated set");
+    var repeated = await RunAsync(verify.InitialProcess);
+    Check(repeated.ExitCode == 0 && !File.Exists(stale) && File.ReadAllText(generatedMap) == initialMap,
+        "successful compilation removes stale sources and retains a deterministic map");
+
+    var brokenLibrary = Path.Combine(libraries, "broken.stlib");
+    File.WriteAllText(brokenLibrary, "invalid archive");
+    var libraryFailure = await RunAsync(verify.InitialProcess);
+    Check(libraryFailure.ExitCode != 0 && libraryFailure.Error.Contains("broken.stlib", StringComparison.Ordinal) &&
+          File.ReadAllText(generatedMap) == initialMap, "project libraries are loaded and errors preserve generated outputs");
+    File.Delete(brokenLibrary);
+
     Check((await defaultBuild.StartBuildAsync(project, "Test")).ProcessExited(0).NextProcess is { } defaultWest &&
           defaultWest.WorkingDirectory == workspace && defaultWest.Arguments.Contains("arduino_opta/stm32h747xx/m7"),
         "firmware stage uses provisioned paths and board without overrides");
@@ -290,8 +361,6 @@ try
     Check(westFailure.Error.Contains("unsupported board invalid_board") &&
           invalidBoard.ProcessExited(westFailure.ExitCode) is { ExitCode: 7, NextProcess: null },
         "west diagnostics and failure exit code reach the build output pipeline");
-    var verify = service.StartVerify(project, "Test");
-    Check((await RunAsync(verify.InitialProcess)).ExitCode == 0 && verify.ProcessExited(0).ExitCode == 0, "ST verification stage");
     var failed = await service.StartDownloadAsync(project, "Test", settings);
     Check(failed.ProcessExited(7) is { ExitCode: 7, NextProcess: null }, "failed ST stage stops the build");
 
@@ -310,8 +379,21 @@ try
     var buildDirectory = westBuild.Arguments[westBuild.Arguments.ToList().IndexOf("-d") + 1];
     var output = Directory.CreateDirectory(Path.Combine(buildDirectory, "app", "zephyr")).FullName;
     File.WriteAllText(Path.Combine(output, "zephyr.signed.bin"), "firmware fixture");
+    File.WriteAllText(Path.Combine(output, "zephyr.elf"), "ELF fixture");
     Check(build.ProcessExited(0).ExitCode == 0 &&
         File.Exists(Path.Combine(project, "Build", "Artifacts", "firmware.bin")), "artifact publishing");
+    var artifactMap = Path.Combine(project, "Build", "Artifacts", "debug_map.json");
+    Check(File.ReadAllText(artifactMap) == initialMap, "published firmware includes its debug map");
+    var cancelledBuild = await service.StartBuildAsync(project, "Test", settings);
+    cancelledBuild.ProcessExited(0);
+    Check(cancelledBuild.ProcessExited(130).NextProcess is null && File.ReadAllText(artifactMap) == initialMap,
+        "cancelled firmware build leaves the last successful artifacts intact");
+    var mismatched = await service.StartBuildAsync(project, "Test", settings);
+    mismatched.ProcessExited(0);
+    File.AppendAllText(generatedMap, " ");
+    Check(mismatched.ProcessExited(0) is { ExitCode: -1, ErrorMessage: not null } &&
+          File.ReadAllText(artifactMap) == initialMap, "changed debug outputs cannot publish with older firmware");
+    File.WriteAllText(generatedMap, initialMap);
     Check((await service.StartBuildAsync(project, "Test", settings)).ProcessExited(0).NextProcess!.Arguments.Contains("auto"),
         "west controls automatic pristine handling");
     Check((await service.StartBuildAsync(project, "Test", settings with { PristineMode = "never" }))
@@ -399,6 +481,16 @@ static async Task RunSessionAsync(FirmwareBuildSession session)
     }
 }
 
+static void CheckDebugMap(string path)
+{
+    using var map = JsonDocument.Parse(File.ReadAllBytes(path));
+    var root = map.RootElement;
+    Check(root.GetProperty("version").GetInt32() == 2 &&
+          root.GetProperty("md5").GetString()?.Length == 32 &&
+          root.GetProperty("arrays").ValueKind == JsonValueKind.Array &&
+          root.GetProperty("leaves").GetArrayLength() > 0, "STruC++ v2 debug map");
+}
+
 static void Check(bool condition, string description)
 {
     if (!condition)
@@ -483,7 +575,9 @@ static async Task<(int ExitCode, string Output, string Error)> RunAsync(BuildPro
     }
     catch (OperationCanceledException)
     {
-        process.Kill(entireProcessTree: true);
+        if (!process.HasExited)
+            process.Kill(entireProcessTree: true);
+        await process.WaitForExitAsync();
         throw;
     }
 }

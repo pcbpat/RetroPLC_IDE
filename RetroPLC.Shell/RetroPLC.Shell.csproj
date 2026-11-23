@@ -16,6 +16,9 @@
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
             <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
         </Content>
+        <Content Include="../tools/generate-strucpp-debug.mjs"
+                 Link="tools/generate-strucpp-debug.mjs"
+                 CopyToPublishDirectory="PreserveNewest" />
         <Content Include="../tools/zephyr-backend/retroplc_zephyr/*.py"
                  Link="tools/zephyr-backend/retroplc_zephyr/%(Filename)%(Extension)"
                  CopyToPublishDirectory="PreserveNewest" />

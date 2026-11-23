@@ -1,91 +1,62 @@
-RetroPLC west-only backend integration
+RetroPLC native STruC++ compilation and debug artifacts
 
-Files added
-  tools/zephyr-backend/retroplc_zephyr/workspace.py
-  tools/zephyr-backend/tests/test_transport.py
+Files
+  Updated the supplied tools/generate-strucpp-debug.mjs.
+  Added tools/retroplc-runtime-debug.patch.
+  Modified RetroPLC.BuildHost/FirmwareBuildService.cs.
+  Modified RetroPLC.LanguageServerHost/StrucppToolchain.cs.
+  Modified RetroPLC.BuildHost.Tests/Program.cs.
+  Modified RetroPLC.Shell/RetroPLC.Shell.csproj, setup.sh, and README.md.
+  Overwrote codex_result.txt.
+  Applied the patch to app/src/main.cpp and app/CMakeLists.txt in the
+  installed RetroPLC Runtime checkout. The patch is stored in the IDE repo.
 
-Files removed
-  tools/zephyr-backend/retroplc_zephyr/boards.py
-  tools/zephyr-backend/retroplc_zephyr/configuration.py
-  tools/zephyr-backend/retroplc_zephyr/sdk.py
-  tools/zephyr-backend/tests/test_backend.py
+Compilation
+  BuildHost uses one managed Node invocation and one STruC++ compile() call
+  for Build, Rebuild, Verify, and Download preparation. The helper uses
+  native ST/IL discovery, including nested sources and excluding ProjectFiles/Tests.
+  The helper loads explicit project .stlib directories with discoverStlibs().
+  The IDE still requests no default bundled libraries. A deterministic MD5 of
+  the sources, loaded libraries, and compiler package version populates the map.
+  It stages the complete output set before replacing Build/Generated.
+  Successful replacement removes obsolete translation units and old headers.
+  Compilation and library failures preserve the previous generated set.
 
-Files replaced or modified
-  tools/zephyr-backend/zephyr_environment.proto
-  tools/zephyr-backend/requirements.txt
-  tools/zephyr-backend/README.md
-  tools/zephyr-backend/retroplc_zephyr/__init__.py
-  tools/zephyr-backend/retroplc_zephyr/__main__.py
-  tools/zephyr-backend/retroplc_zephyr/transport.py
-  RetroPLC.BuildHost/ZephyrBackend/ZephyrBackendClient.cs
-  RetroPLC.BuildHost/ZephyrBackend/ZephyrBackendProcess.cs
-  RetroPLC.BuildHost/ZephyrConfiguration.cs
-  RetroPLC.BuildHost/ZephyrBoardService.cs
-  RetroPLC.BuildHost/ZephyrSdkService.cs
-  RetroPLC.BuildHost/FirmwareBuildService.cs
-  RetroPLC.BuildHost.Tests/Program.cs
-  RetroPLC.Shell/ViewModels/MainWindowViewModel.cs
-  setup.sh
-  README.md
-  codex_result.txt
-
-gRPC and workspace discovery
-  GetWorkspaceInfo probes startup readiness and exposes manifest metadata.
-  ValidateWorkspace supplies the workspace root and confirms the manifest's
-  Zephyr project is checked out before firmware preparation.
-  GetProjects and GetWestConfig expose typed west project and configuration data.
-  Grpc.Tools generates the C# bindings. Struct conversion and error mapping
-  stay inside the backend integration. The five former RPCs remain wire
-  compatibility stubs that return UNIMPLEMENTED. BuildHost never invokes them.
-  The managed AC6 Python process remains lazy, shared, cancellable, and
-  loopback-only, with the existing readiness timeout and shutdown ownership.
-  West manifest loads are serialized because its schema validator has shared
-  state. The backend uses documented west APIs for all workspace metadata.
-  setup.sh verifies the new west dependency alongside the gRPC imports.
-  Installed west 1.5.0, grpcio 1.85.3, and protobuf 6.33.6 met the requirements.
-
-Configuration, boards, SDK, and builds
-  ResolveAsync merges operation, project, IDE, environment, and built-in
-  settings locally. It preserves project and installation path bases, CMake
-  option merging, the project JSON shape, sysbuild, and pristine settings.
-  Terminal launch uses AC6 directly. Local configuration, terminal, and
-  clean operations do not need the Python backend.
-  Board targets are opaque strings. The default remains
-  arduino_opta/stm32h747xx/m7. Board API compatibility methods explicitly
-  report unsupported discovery and prevalidation. There is no live board picker.
-  BuildHost checks that the selected SDK directory exists. It supplies the
-  flat SDK path and toolchain variant to AC6 west and CMake, including the
-  existing sysbuild options. Zephyr's CMake determines compatibility.
-  Removed hand parsing of CMakeCache.txt. West handles pristine modes.
-  Rebuild uses always. Clean removes the project's Build tree as before.
-  Structured Text compilation, generated-source paths, artifacts, verify,
-  and mcumgr download remain in BuildHost. Failed processes leave diagnostic
-  output in the Build tool and the UI status points to that output.
+Outputs and Runtime
+  Build/Generated contains generated.hpp, native named C++ units,
+  generated_debug.cpp, and the native v2 debug_map.json.
+  The Runtime already globs generated C++ files. Its scan loop and pointer
+  table now share one global g_config. A compile-time declaration checks the
+  configuration class and Zephyr linker options retain the table symbols.
+  BuildHost validates the map before starting west and checks it again before
+  publishing. It stages the firmware and map together under Build/Artifacts.
+  Failed or cancelled builds preserve the last successful published pair.
+  Verify updates generated files only. Download still uses mcumgr after
+  a successful build. Setup applies the Runtime patch idempotently and checks
+  that the compiled Node API exists. No STruC++ or west backend files changed.
 
 Verification
   PASS  dotnet build RetroPLC.sln --no-restore -m:1
-  PASS  dotnet test RetroPLC.sln --no-build -m:1 (VSTest target completed)
-  PASS  dotnet run --project RetroPLC.BuildHost.Tests --no-build (twice after
-        serializing manifests). This console runner tests configuration, RPCs,
-        startup, cancellation, shutdown, terminal launch, and build arguments
-        and failures with isolated fixtures.
-  PASS  Python unittest discovery in the AC6 venv (7 tests). Fixtures use
-        the actual west APIs and check that all five legacy RPCs are unsupported.
-  PASS  Offline dependency check, bash -n setup.sh, and git diff --check.
-
-Live verification
-  The managed backend returned the installed Runtime manifest, Zephyr checkout,
-  the zephyr project, and manifest.path over gRPC. A temporary copy of TestProj
-  built the default Arduino Opta target with the installed Zephyr SDK 1.0.1.
-  Clean removed its Build output. Pristine sysbuild rebuilt MCUboot and the
-  application and published signed BIN, HEX, ELF, and MAP files. A nonexistent
-  SDK produced a path diagnostic. An empty temporary SDK directory reached
-  CMake and produced the expected Zephyr-sdk package error.
-  Live log and artifacts are under /tmp/retroplc-west-live.6Ba6wihx.
-  The installed workspace, Runtime and SDK were not replaced or edited.
+  PASS  dotnet test RetroPLC.sln --no-build -m:1 (solution VSTest target)
+  PASS  dotnet run --project RetroPLC.BuildHost.Tests --no-build
+        The console runner exercised actual managed Node compilation, nested
+        sources, project archives, bad source/archive failures, native module
+        and Node diagnostics, process cancellation, stale cleanup, map
+        validation/publication, verify, and download preparation.
+  PASS  Managed Node.js v22.23.2 direct helper run. TestProj emitted
+        configuration.cpp, pou_MAIN.cpp, generated.hpp, generated_debug.cpp,
+        and a v2 debug map with arrays, leaves, MD5, and 10 debug symbols.
+  PASS  Live Opta build, clean, and pristine rebuild using the installed
+        arduino_opta/stm32h747xx/m7 target, sysbuild, MCUboot, and Zephyr SDK.
+        The published debug_map.json matched the generated file byte for byte.
+        ARM nm confirmed g_config, debug_arrays, debug_array_counts and
+        debug_array_count in the final ELF. Signed BIN and HEX were produced.
+        Live artifacts and log are under /tmp/retroplc-native-live.aykJQyeX.
+  PASS  Node syntax, bash syntax, diff checks, and Runtime patch forward and
+        reverse application checks. The full bootstrap was not rerun.
 
 Limitations
-  Use Rebuild to reset existing CMake state after changing SDK installations.
-  The loopback port remains unauthenticated. Desktop interaction, physical
-  firmware upload, macOS, and Windows were not exercised. Existing Shell
-  threading analyzer warnings appeared on a full compilation.
+  Physical flashing and runtime variable monitoring were not exercised.
+  The MD5 is recorded in the debug map. Firmware does not yet report it
+  through SMP. A custom Runtime checkout needs compatible debug integration.
+  Existing Avalonia analyzer warnings appeared on a full compilation.

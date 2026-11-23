@@ -393,6 +393,7 @@ process.stdout.write(`${asset.browser_download_url}|${digest}`);
 heading 5 "Building STruC++ from tools/strucpp"
 
 readonly STRUCPP_COMPILER="${STRUCPP_SOURCE_DIR}/dist/node/cli.js"
+readonly STRUCPP_API="${STRUCPP_SOURCE_DIR}/dist/node/index.js"
 readonly STRUCPP_SERVER="${STRUCPP_SOURCE_DIR}/vscode-extension/out/server/src/server.js"
 
 strucpp_commit="$(git -C "${STRUCPP_SOURCE_DIR}" rev-parse HEAD)"
@@ -409,6 +410,7 @@ run_npm() {
 
 strucpp_is_current=false
 if [[ -f "${STRUCPP_COMPILER}" ]] && \
+   [[ -f "${STRUCPP_API}" ]] && \
    [[ -f "${STRUCPP_SERVER}" ]] && \
    [[ -f "${STRUCPP_MARKER}" ]] && \
    [[ "$(cat "${STRUCPP_MARKER}" 2>/dev/null || true)" == "${strucpp_marker_value}" ]]; then
@@ -434,6 +436,7 @@ if [[ "${strucpp_is_current}" == false ]]; then
 fi
 
 [[ -f "${STRUCPP_COMPILER}" ]] || die "STruC++ compiler JavaScript was not built."
+[[ -f "${STRUCPP_API}" ]] || die "STruC++ native compiler API was not built."
 [[ -f "${STRUCPP_SERVER}" ]] || die "STruC++ language-server JavaScript was not built."
 [[ -d "${STRUCPP_SOURCE_DIR}/libs" ]] || die "STruC++ libraries directory is missing."
 [[ -d "${STRUCPP_SOURCE_DIR}/src/runtime" ]] || die "STruC++ runtime sources are missing."
@@ -583,6 +586,11 @@ provision_zephyr() (
 
     info "Synchronizing Zephyr modules from the Runtime manifest"
     "${west}" update
+    local runtime_debug_patch="${TOOLS_DIR}/retroplc-runtime-debug.patch"
+    if ! git -C "${RETROPLC_RUNTIME_DIR}" apply --reverse --check "${runtime_debug_patch}" 2>/dev/null; then
+        git -C "${RETROPLC_RUNTIME_DIR}" apply "${runtime_debug_patch}" ||
+            die "Could not apply the RetroPLC Runtime debug integration to ${RETROPLC_RUNTIME_DIR}."
+    fi
     [[ -f zephyr/SDK_VERSION ]] || die "Missing zephyr/SDK_VERSION after west update"
     info "Installing workspace-specific Python requirements into AC6 venv"
     "${west}" packages pip --install
