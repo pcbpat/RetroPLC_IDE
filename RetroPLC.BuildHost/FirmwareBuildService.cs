@@ -229,7 +229,14 @@ public sealed class FirmwareBuildService
         {
             var cachedSdk = ReadCMakeCachePath(cachePath, "ZEPHYR_SDK_INSTALL_DIR");
             var cachedSysbuild = ReadCMakeCachePath(cachePath, "APP_DIR") is not null;
-            if (cachedSdk is null || !SameDirectory(cachedSdk, sdkDirectory) || cachedSysbuild != sysbuild)
+            var imageCache = sysbuild
+                ? Path.Combine(context.BuildDirectory, context.ApplicationName, "CMakeCache.txt")
+                : cachePath;
+            var cachedPackage = ReadCMakeCachePath(imageCache, "Zephyr-sdk_DIR");
+            var cachedVersion = ReadCMakeCachePath(cachePath, "RETROPLC_SDK_VERSION");
+            if (cachedSdk is null || !SameDirectory(cachedSdk, sdkDirectory) || cachedSysbuild != sysbuild ||
+                cachedVersion != context.SdkVersion ||
+                (cachedPackage is not null && !SameDirectory(cachedPackage, Path.Combine(sdkDirectory, "cmake"))))
             {
                 if (pristineMode == "never")
                     throw new InvalidOperationException(
@@ -240,7 +247,7 @@ public sealed class FirmwareBuildService
         var arguments = new List<string>
         {
             "build", "-p", pristineMode, sysbuild ? "--sysbuild" : "--no-sysbuild", "-b", context.Settings.BoardTarget!,
-            "-d", context.BuildDirectory, context.Settings.ApplicationDirectory!, "--"
+            "-s", context.Settings.ApplicationDirectory!, "-d", context.BuildDirectory, "--"
         };
 
         foreach (var option in context.Settings.CMakeOptions!)
@@ -248,6 +255,7 @@ public sealed class FirmwareBuildService
 
         arguments.Add($"-DBOARD:STRING={context.Settings.BoardTarget}");
         arguments.Add($"-D{generatedOption}={context.GeneratedDirectory}");
+        arguments.Add($"-DRETROPLC_SDK_VERSION:INTERNAL={context.SdkVersion}");
         arguments.Add($"-DZEPHYR_SDK_INSTALL_DIR:PATH={sdkDirectory}");
         arguments.Add($"-DZephyr-sdk_DIR:PATH={Path.Combine(sdkDirectory, "cmake")}");
         if (sysbuild)
@@ -307,16 +315,24 @@ public sealed class FirmwareBuildService
         if (!ZephyrBoardService.IsBoardTarget(settings.BoardTarget))
             throw new InvalidOperationException(
                 "Select a valid Zephyr board target in the project or set RETROPLC_ZEPHYR_BOARD.");
-        ZephyrConfiguration.RequireWorkspace(settings.WorkspaceDirectory);
+        var workspace = ZephyrConfiguration.RequireWorkspace(settings.WorkspaceDirectory);
+        var sdkPin = Path.Combine(workspace, "zephyr", "SDK_VERSION");
+        if (!File.Exists(sdkPin) || new FileInfo(sdkPin).Length == 0)
+            throw new FileNotFoundException(
+                $"Zephyr sources are incomplete at '{workspace}' (missing or empty zephyr/SDK_VERSION). " +
+                "Run setup.sh or check your explicit workspace override.", sdkPin);
         if (settings.ApplicationDirectory is null ||
             !File.Exists(Path.Combine(settings.ApplicationDirectory, "CMakeLists.txt")))
             throw new DirectoryNotFoundException(
                 $"No Zephyr application exists at '{settings.ApplicationDirectory}'. " +
-                "Set the project applicationDirectory or RETROPLC_ZEPHYR_APPLICATION.");
+                "Run setup.sh or check the applicationDirectory override.");
 
         if (settings.SdkDirectory is null)
-            throw new InvalidOperationException("Select a Zephyr SDK in the project or set RETROPLC_ZEPHYR_SDK.");
-        ZephyrSdkService.ValidateInstallation(settings.SdkDirectory);
+            throw new InvalidOperationException("RetroPLC Zephyr SDK was not found. Run setup.sh to provision it.");
+        var sdk = ZephyrSdkService.ValidateInstallation(settings.SdkDirectory);
+        if (settings.BoardTarget!.Split('/')[0] == "arduino_opta" && !sdk.Toolchains.Contains("arm-zephyr-eabi"))
+            throw new IOException($"The Zephyr SDK at '{settings.SdkDirectory}' is missing its ARM compiler. " +
+                                  "Run setup.sh or check the SDK override.");
         if (settings.PristineMode is not ("auto" or "always" or "never"))
             throw new InvalidOperationException("Zephyr pristine mode must be auto, always, or never.");
         foreach (var option in settings.CMakeOptions!)
@@ -332,7 +348,7 @@ public sealed class FirmwareBuildService
             settings.BuildDirectory ?? Path.Combine(buildRoot, "Zephyr", MakeSafeDirectoryName(settings.BoardTarget!)),
             Path.Combine(buildRoot, "Artifacts"),
             Path.GetFileName(Path.TrimEndingDirectorySeparator(settings.ApplicationDirectory)),
-            settings);
+            sdk.Version, settings);
     }
 
     internal static void PublishBuildArtifacts(ZephyrBuildContext context)
@@ -426,4 +442,5 @@ internal sealed record ZephyrBuildContext(
     string BuildDirectory,
     string ArtifactsDirectory,
     string ApplicationName,
+    string SdkVersion,
     ZephyrBuildConfiguration Settings);

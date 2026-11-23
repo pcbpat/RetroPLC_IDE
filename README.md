@@ -108,20 +108,15 @@ application. A published installation needs AC6 files generated for its actual
 location because the AC6 manifest and venv can contain absolute paths. Use
 `RETROPLC_AC6_DIRECTORY` to select an existing installation elsewhere.
 
-Open an IDE terminal, change to the desired west workspace and provision its
-manifest and Python requirements with its managed `west`. To initialize a new
-RetroPLC Runtime workspace, use
-`west init -m https://github.com/pcbpat/RetroPLC_Runtime.git <workspace>`.
-From the workspace, run `west update` and `west packages pip --install` when
-supported by its Zephyr version. On Linux, the IDE uses AppImage extract-and-run
-mode when AC6 Python is an AppImage and the FUSE device is unavailable. Set
-`APPIMAGE_EXTRACT_AND_RUN=1` explicitly if the device is present but mounting
-the AppImage still fails.
+Run `setup.sh` to provision the Runtime workspace and its SDK. The IDE builds
+the central application at `.zephyr/workspace/retroplc-runtime/app`, using
+the workspace at `.zephyr/workspace`, the SDK directly in `.zephyr/sdk`, and
+the `arduino_opta/stm32h747xx/m7` board. These paths are relative to the
+application root. On Linux, the IDE uses AppImage extract-and-run mode when
+AC6 Python is an AppImage and the FUSE device is unavailable. Set
+`APPIMAGE_EXTRACT_AND_RUN=1` if the device is present but the mount still fails.
 
-Use `.zephyr/zephyr-workspace` for the workspace containing `.west/config` and
-`.zephyr/sdks` for SDK installations. Select a board and an SDK that supports
-that target. The workspace's
-`RetroPLC_Runtime/app` is the default application directory. A `zephyr` object in
+A `zephyr` object in
 the project's `project.json` can contain:
 
 ```json
@@ -138,7 +133,7 @@ the project's `project.json` can contain:
 ```
 
 Set `boardTarget` to a target reported by the workspace, including any
-qualifiers. Set `sdkDirectory` to override the IDE's selected SDK. Other
+qualifiers. Set `sdkDirectory` to override the provisioned SDK. Other
 optional fields are `applicationDirectory`, `buildDirectory` and
 `hostToolsDirectory`. The default build directory is below `Build/Zephyr` in
 the project. Clean removes the project's `Build` tree.
@@ -159,22 +154,18 @@ Rebuild always uses a pristine build.
 | `RETROPLC_AC6_DIRECTORY` | Existing AC6 hosttools installation |
 | `RETROPLC_ZEPHYR_WORKSPACE` | West workspace directory |
 | `RETROPLC_ZEPHYR_APPLICATION` | Zephyr application directory |
-| `RETROPLC_ZEPHYR_SDK` | Selected SDK, ahead of `ZEPHYR_SDK_INSTALL_DIR` and the saved IDE selection |
-| `RETROPLC_ZEPHYR_BOARD` | Optional board target if the project has no selection |
-| `RETROPLC_ZEPHYR_SDK_ROOTS` | Additional SDK directories or parent directories, separated by the platform's PATH separator |
+| `RETROPLC_ZEPHYR_SDK` | Explicit override for the provisioned SDK |
+| `RETROPLC_ZEPHYR_BOARD` | Board target override |
 
 The terminal and BuildHost use the west supplied by AC6. Select hosttools with
 `RETROPLC_AC6_DIRECTORY`. Set `RETROPLC_TOOLS_DIRECTORY` to override the
 application-managed `tools` directory. Relative overrides start at the
 application root.
 
-`ZephyrConfiguration.Sdks` exposes SDK discovery, selection and explicit
-installation through `IZephyrSdkService`. Discovery checks the home directory,
-application directory, application `.zephyr/sdks` directory, common Unix SDK roots and
-configured roots, including their immediate children. `GetBoardService` exposes workspace board
-discovery and validation through `IZephyrBoardService`. These APIs are ready
-for a Shell picker. The IDE never installs SDKs at startup. An interrupted
-`west sdk install` may leave a partial SDK in the requested directory.
+`GetBoardService` exposes discovery and validation for workspace board targets.
+The IDE validates the provisioned environment before building. Rebuild uses
+a pristine build, and automatic mode rebuilds when the cached SDK location or
+version changes.
 
 Run the BuildHost checks with `dotnet run --project RetroPLC.BuildHost.Tests`.
 The Linux tests use isolated fixtures for hosttools, west and the ST and

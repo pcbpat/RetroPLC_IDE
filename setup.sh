@@ -20,7 +20,7 @@
 #   - sha256sum or shasum
 #
 # AC6 hosttools must already be installed in sibling .zinstaller/.
-# Zephyr workspaces and SDKs are deliberately NOT provisioned here.
+# Zephyr workspace and matching SDK are provisioned after application tools.
 # Windows bootstrap is not implemented yet.
 
 set -euo pipefail
@@ -53,12 +53,23 @@ readonly MCUMGR_DIR="${TOOLS_DIR}/mcumgr"
 readonly NODE_DIR="${TOOLS_DIR}/node"
 readonly TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/retroplc-setup.XXXXXX")"
 
+readonly ZEPHYR_DIR="${SCRIPT_DIR}/.zephyr"
+readonly ZEPHYR_WORKSPACE_DIR="${ZEPHYR_DIR}/workspace"
+readonly RETROPLC_RUNTIME_DIR="${ZEPHYR_WORKSPACE_DIR}/retroplc-runtime"
+readonly RETROPLC_RUNTIME_URL="${RETROPLC_RUNTIME_URL:-https://github.com/pcbpat/RetroPLC_Runtime.git}"
+readonly RETROPLC_SDK_TOOLCHAINS="${RETROPLC_SDK_TOOLCHAINS:-arm-zephyr-eabi}"
+readonly ZEPHYR_SDK_DIR="${ZEPHYR_DIR}/sdk"
+
+mkdir -p \
+    "${ZEPHYR_WORKSPACE_DIR}" \
+    "${ZEPHYR_DIR}"
+
 cleanup() {
     rm -rf "${TMP_DIR}"
 }
 trap cleanup EXIT
 
-readonly TOTAL_STEPS=7
+readonly TOTAL_STEPS=8
 
 if [[ -t 1 ]]; then
     readonly COLOR_CYAN=$'\033[1;36m'
@@ -474,10 +485,152 @@ if [[ "${mcumgr_is_current}" == false ]]; then
 fi
 
 # -----------------------------------------------------------------------------
+# Managed Zephyr workspace + SDK (RetroPLC Runtime manifest)
+# -----------------------------------------------------------------------------
+
+heading 7 "Provisioning RetroPLC Zephyr workspace and SDK"
+
+# The prerequisite check above runs in a subshell intentionally. Initialize an
+# AC6 environment for west here without modifying the caller's global shell.
+# AC6's generated env.sh can leave system cmake/ninja first on PATH; explicitly
+# prioritize the actual managed executables without assuming a CMake version.
+configure_zephyr_environment() {
+    unset PYTHONHOME PYTHONPATH VIRTUAL_ENV ZEPHYR_BASE ZEPHYR_SDK_INSTALL_DIR || true
+    export PYTHON_VENV_PATH="${AC6_VENV}"
+    export PATH="${AC6_VENV}/bin:${PATH}"
+    if [[ "$(uname -s)" == Linux && ! -w /dev/fuse && -z "${APPIMAGE_EXTRACT_AND_RUN+x}" ]]; then
+        export APPIMAGE_EXTRACT_AND_RUN=1
+    fi
+
+    # Some generated AC6 scripts refer to unset variables. Disable nounset
+    # only while sourcing their environment, then restore its prior state.
+    local nounset_was_on=false
+    case "$-" in *u*) nounset_was_on=true ;; esac
+    set +u
+    if ! source "${AC6_ENV}"; then
+        [[ "${nounset_was_on}" == true ]] && set -u
+        die "Could not load AC6 environment: ${AC6_ENV}"
+    fi
+    [[ "${nounset_was_on}" == true ]] && set -u
+
+    local -a cmake_binaries=("${AC6_DIR}"/tools/cmake-*/bin/cmake)
+    local cmake_binary=""
+    local candidate
+    for candidate in "${cmake_binaries[@]}"; do
+        [[ -x "${candidate}" ]] || continue
+        if [[ -n "${cmake_binary}" ]]; then
+            die "Multiple AC6 CMake installations found. Select one in env.yml before provisioning."
+        fi
+        cmake_binary="${candidate}"
+    done
+    [[ -n "${cmake_binary}" ]] || die "No managed CMake found under ${AC6_DIR}/tools"
+    [[ -x "${AC6_DIR}/tools/ninja/ninja" ]] || die "Managed Ninja missing under ${AC6_DIR}/tools/ninja"
+
+    export VIRTUAL_ENV="${AC6_VENV}"
+    export PATH="${AC6_VENV}/bin:$(dirname "${cmake_binary}"):${AC6_DIR}/tools/ninja:${PATH}"
+    hash -r
+
+    [[ "$(type -P west)" == "${AC6_VENV}/bin/west" ]] || die "west is not the AC6-managed executable"
+    [[ "$(type -P cmake)" == "${cmake_binary}" ]] || die "CMake does not resolve to the managed executable"
+    [[ "$(type -P ninja)" == "${AC6_DIR}/tools/ninja/ninja" ]] || die "Ninja does not resolve to the managed executable"
+}
+
+provision_zephyr() (
+    configure_zephyr_environment
+    local west="${AC6_VENV}/bin/west"
+    local python="${AC6_VENV}/bin/python"
+    local sdk_version sdk_gcc sdk_installed_version
+
+    mkdir -p "${ZEPHYR_WORKSPACE_DIR}"
+
+    # Never reset, force-checkout, or overwrite a local Runtime repository.
+    if [[ ! -d "${RETROPLC_RUNTIME_DIR}/.git" && ! -f "${RETROPLC_RUNTIME_DIR}/.git" ]]; then
+        if [[ -e "${RETROPLC_RUNTIME_DIR}" ]]; then
+            die "Runtime path exists but is not a Git checkout: ${RETROPLC_RUNTIME_DIR}"
+        fi
+        info "Cloning RetroPLC Runtime manifest repository"
+        git clone "${RETROPLC_RUNTIME_URL}" "${RETROPLC_RUNTIME_DIR}"
+    else
+        info "Reusing existing RetroPLC Runtime checkout"
+    fi
+
+    [[ -f "${RETROPLC_RUNTIME_DIR}/west.yml" ]] || die "Runtime manifest missing: ${RETROPLC_RUNTIME_DIR}/west.yml"
+    cd "${ZEPHYR_WORKSPACE_DIR}"
+    if [[ ! -f .west/config ]]; then
+        if [[ -e .west ]]; then
+            die "Found incomplete west metadata in ${ZEPHYR_WORKSPACE_DIR}/.west; repair manually"
+        fi
+        info "Initializing west workspace from retroplc-runtime/west.yml"
+        "${west}" init -l "${RETROPLC_RUNTIME_DIR}" --mf west.yml
+    else
+        local manifest_path manifest_file
+        manifest_path="$("${west}" config --local manifest.path 2>/dev/null || true)"
+        manifest_file="$("${west}" config --local manifest.file 2>/dev/null || true)"
+        [[ -n "${manifest_file}" ]] || manifest_file=west.yml
+        [[ -n "${manifest_path}" ]] || die "Existing workspace has no manifest.path: ${ZEPHYR_WORKSPACE_DIR}"
+        # Preserve existing workspace if and only if it is tied to our Runtime.
+        local actual_manifest
+        actual_manifest="$(cd "${ZEPHYR_WORKSPACE_DIR}/${manifest_path}" 2>/dev/null && pwd -P)" || die "Invalid west manifest.path: ${manifest_path}"
+        [[ "${actual_manifest}" == "$(cd "${RETROPLC_RUNTIME_DIR}" && pwd -P)" && "${manifest_file}" == west.yml ]] ||
+            die "Existing workspace points to a different manifest (${manifest_path}/${manifest_file}); refusing to rewrite"
+        info "Reusing initialized west workspace"
+    fi
+
+    info "Synchronizing Zephyr modules from the Runtime manifest"
+    "${west}" update
+    [[ -f zephyr/SDK_VERSION ]] || die "Missing zephyr/SDK_VERSION after west update"
+    info "Installing workspace-specific Python requirements into AC6 venv"
+    "${west}" packages pip --install
+    "${west}" zephyr-export
+
+    sdk_version="$(head -n 1 zephyr/SDK_VERSION | tr -d '[:space:]')"
+    [[ "${sdk_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][[:alnum:]._-]+)?$ ]] ||
+        die "Invalid Zephyr SDK version in zephyr/SDK_VERSION: ${sdk_version}"
+    sdk_gcc="${ZEPHYR_SDK_DIR}/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
+
+    info "Zephyr SDK required by Runtime: ${sdk_version}"
+    if [[ -e "${ZEPHYR_SDK_DIR}" ]]; then
+        [[ -d "${ZEPHYR_SDK_DIR}" && ! -L "${ZEPHYR_SDK_DIR}" ]] ||
+            die "SDK destination is not a regular directory: ${ZEPHYR_SDK_DIR}"
+        [[ -f "${ZEPHYR_SDK_DIR}/sdk_version" ]] ||
+            die "SDK destination is incomplete: ${ZEPHYR_SDK_DIR}. Move it aside and rerun setup."
+        sdk_installed_version="$(head -n 1 "${ZEPHYR_SDK_DIR}/sdk_version" | tr -d '[:space:]')"
+        [[ "${sdk_installed_version}" == "${sdk_version}" ]] ||
+            die "Installed SDK ${sdk_installed_version} differs from Runtime-required ${sdk_version}. Move ${ZEPHYR_SDK_DIR} aside and rerun setup."
+        [[ -x "${sdk_gcc}" ]] ||
+            die "SDK at ${ZEPHYR_SDK_DIR} lacks ARM compiler. Repair the installation manually."
+        info "Reusing installed SDK: ${ZEPHYR_SDK_DIR}"
+    else
+        info "Installing Zephyr SDK ${sdk_version} directly into ${ZEPHYR_SDK_DIR}"
+        # The Runtime-pinned Zephyr's 'west sdk install --install-dir' option
+        # extracts the SDK into this exact directory (no versioned child).
+        local -a toolchains=()
+        read -r -a toolchains <<< "${RETROPLC_SDK_TOOLCHAINS}"
+        (( ${#toolchains[@]} > 0 )) || die "RETROPLC_SDK_TOOLCHAINS cannot be empty"
+        "${west}" sdk install --version "${sdk_version}" \
+            --install-dir "${ZEPHYR_SDK_DIR}" --toolchains "${toolchains[@]}"
+    fi
+
+    [[ -f "${ZEPHYR_SDK_DIR}/sdk_version" ]] || die "Installed SDK missing sdk_version: ${ZEPHYR_SDK_DIR}"
+    sdk_installed_version="$(head -n 1 "${ZEPHYR_SDK_DIR}/sdk_version" | tr -d '[:space:]')"
+    [[ "${sdk_installed_version}" == "${sdk_version}" ]] ||
+        die "Installed SDK version mismatch: expected ${sdk_version}, got ${sdk_installed_version}"
+    [[ -x "${sdk_gcc}" ]] || die "Installed SDK missing ARM compiler: ${sdk_gcc}"
+    export ZEPHYR_SDK_INSTALL_DIR="${ZEPHYR_SDK_DIR}"
+    export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
+    "${sdk_gcc}" --version >/dev/null || die "ARM compiler failed to start"
+    info "west workspace: ${ZEPHYR_WORKSPACE_DIR}"
+    info "Zephyr revision: $(git -C zephyr rev-parse --short HEAD)"
+    info "SDK: ${ZEPHYR_SDK_DIR} (version ${sdk_version})"
+)
+
+provision_zephyr
+
+# -----------------------------------------------------------------------------
 # Final verification
 # -----------------------------------------------------------------------------
 
-heading 7 "Verifying RetroPLC setup"
+heading 8 "Verifying RetroPLC setup"
 
 echo "  Node:           $("${NODE_BIN}" --version)"
 echo "  STruC++:        ${strucpp_version} (${strucpp_commit:0:12})"
@@ -487,6 +640,7 @@ echo
 echo "System dependencies still required: git, curl, tar and basic POSIX utilities."
 echo "Node.js, STruC++ and mcumgrctl are managed under tools/."
 echo "AC6 hosttools:    ${AC6_DIR}"
-echo "Use .zephyr/ for separately provisioned Zephyr workspaces and SDKs."
+echo "Zephyr workspace: ${ZEPHYR_WORKSPACE_DIR}"
+echo "Zephyr SDK:       ${ZEPHYR_SDK_DIR}"
 echo "STruC++ and Win98SE are pinned Git submodules inside the RetroPLC_IDE checkout."
 success "RetroPLC setup completed successfully."

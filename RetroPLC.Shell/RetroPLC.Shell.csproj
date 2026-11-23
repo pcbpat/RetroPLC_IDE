@@ -32,9 +32,9 @@
         <ProjectReference Include="..\RetroPLC.Icons\RetroPLC.Icons.csproj" />
         <ProjectReference Include="..\RetroPLC.LanguageServerHost\RetroPLC.LanguageServerHost.csproj" />
         <ProjectReference Include="..\RetroPLC.Theme\RetroPLC.Theme.csproj" />
-        <PackageReference Include="Avalonia" Version="12.0.3"/>
-        <PackageReference Include="Avalonia.Desktop" Version="12.0.3"/>
-        <PackageReference Include="Avalonia.Fonts.Inter" Version="12.0.3"/>
+        <PackageReference Include="Avalonia" Version="12.2.0"/>
+        <PackageReference Include="Avalonia.Desktop" Version="12.2.0"/>
+        <PackageReference Include="Avalonia.Fonts.Inter" Version="12.2.0"/>
         <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.1">
             <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
             <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
