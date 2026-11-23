@@ -108,7 +108,12 @@ application. A published installation needs AC6 files generated for its actual
 location because the AC6 manifest and venv can contain absolute paths. Use
 `RETROPLC_AC6_DIRECTORY` to select an existing installation elsewhere.
 
-Run `setup.sh` to provision the Runtime workspace and its SDK. The IDE builds
+Run `setup.sh` to provision the Runtime workspace and its SDK and install
+the Zephyr backend's Python dependencies into `.zinstaller/.venv`. The IDE
+starts the local backend when it first needs west workspace or manifest
+metadata and stops it at shutdown. Zephyr checks the configured board and SDK
+compatibility during CMake configuration. The backend always uses Python from the
+installation's `.zinstaller/.venv`. The IDE builds
 the central application at `.zephyr/workspace/retroplc-runtime/app`, using
 the workspace at `.zephyr/workspace`, the SDK directly in `.zephyr/sdk`, and
 the `arduino_opta/stm32h747xx/m7` board. These paths are relative to the
@@ -132,8 +137,8 @@ the project's `project.json` can contain:
 }
 ```
 
-Set `boardTarget` to a target reported by the workspace, including any
-qualifiers. Set `sdkDirectory` to override the provisioned SDK. Other
+Set `boardTarget` to the Zephyr target, including any qualifiers. The IDE
+passes it unchanged to west. Set `sdkDirectory` to override the provisioned SDK. Other
 optional fields are `applicationDirectory`, `buildDirectory` and
 `hostToolsDirectory`. The default build directory is below `Build/Zephyr` in
 the project. Clean removes the project's `Build` tree.

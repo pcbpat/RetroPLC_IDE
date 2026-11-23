@@ -110,6 +110,7 @@ http-client.private.env.json
 /tools/node/
 /tools/mcumgr/
 /tools/.retroplc-strucpp-build
+/RetroPLC.LanguageServerHost/Tools/*
 
 # Local AC6 hosttools installation
 /.zinstaller/

@@ -27,6 +27,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private bool _isRunning;
     private bool _isProjectOpen;
     private bool _isLoadingProject;
+    private bool _isPreparingBuild;
     private string _plcStatus = string.Empty;
 
     public IRootDock? Layout
@@ -173,7 +174,7 @@ public partial class MainWindowViewModel : ViewModelBase
             _factory.RequestFormatActiveDocument,
             () => _isProjectOpen);
         CloseAllDocumentsCommand = new RelayCommand(_factory.CloseAllDocuments);
-        OpenTerminalCommand = new RelayCommand(_factory.OpenTerminal);
+        OpenTerminalCommand = new AsyncRelayCommand(_factory.OpenTerminalAsync);
         GoOnlineCommand = new RelayCommand(GoOnline, () => !_isOnline);
         GoOfflineCommand = new RelayCommand(GoOffline, () => _isOnline);
         LoginCommand = new RelayCommand(Login, () => _isOnline && !_isLoggedIn);
@@ -181,11 +182,11 @@ public partial class MainWindowViewModel : ViewModelBase
         RunCommand = new RelayCommand(Run, () => _isLoggedIn && !_isRunning);
         StopCommand = new RelayCommand(Stop, () => _isLoggedIn && _isRunning);
         ResetPlcCommand = new RelayCommand(ResetPlc, () => _isLoggedIn);
-        VerifyCommand = new RelayCommand(Verify, () => _isProjectOpen);
-        BuildCommand = new RelayCommand(Build, () => _isProjectOpen);
-        RebuildCommand = new RelayCommand(Rebuild, () => _isProjectOpen);
-        CleanCommand = new RelayCommand(Clean, () => _isProjectOpen);
-        DownloadCommand = new RelayCommand(Download, () => _isProjectOpen && !_isRunning);
+        VerifyCommand = new AsyncRelayCommand(VerifyAsync, () => _isProjectOpen);
+        BuildCommand = new AsyncRelayCommand(BuildAsync, () => _isProjectOpen);
+        RebuildCommand = new AsyncRelayCommand(RebuildAsync, () => _isProjectOpen);
+        CleanCommand = new AsyncRelayCommand(CleanAsync, () => _isProjectOpen);
+        DownloadCommand = new AsyncRelayCommand(DownloadAsync, () => _isProjectOpen && !_isRunning);
         _factory.BuildOperationExited += OnBuildOperationExited;
         ApplyTheme();
         ApplyTextSize();
@@ -294,39 +295,31 @@ public partial class MainWindowViewModel : ViewModelBase
         RefreshPlcCommands();
     }
 
-    private void Verify()
-    {
-        StartBuildOperation(BuildOperation.Verify, "verifying…", _factory.Verify);
-    }
+    private Task VerifyAsync() => StartBuildOperationAsync(BuildOperation.Verify, "verifying…");
+    private Task BuildAsync() => StartBuildOperationAsync(BuildOperation.Build, "building…");
+    private Task RebuildAsync() => StartBuildOperationAsync(BuildOperation.Rebuild, "rebuilding…");
+    private Task CleanAsync() => StartBuildOperationAsync(BuildOperation.Clean, "cleaning…");
+    private Task DownloadAsync() => StartBuildOperationAsync(BuildOperation.Download, "downloading…");
 
-    private void Build()
+    private async Task StartBuildOperationAsync(BuildOperation operation, string status)
     {
-        StartBuildOperation(BuildOperation.Build, "building…", _factory.Build);
-    }
+        if (_isPreparingBuild)
+            return;
 
-    private void Rebuild()
-    {
-        StartBuildOperation(BuildOperation.Rebuild, "rebuilding…", _factory.Rebuild);
-    }
-
-    private void Clean()
-    {
-        StartBuildOperation(BuildOperation.Clean, "cleaning…", _factory.Clean);
-    }
-
-    private void StartBuildOperation(BuildOperation operation, string status, System.Action action)
-    {
+        _isPreparingBuild = true;
         PlcStatus = status;
         try
         {
             _factory.SaveAllDocuments();
-            action();
+            await _factory.RunBuildToolAsync(operation);
         }
         catch (Exception exception)
         {
-            var actionName = GetBuildOperationName(operation);
-            var result = $"{actionName} failed: {exception.Message}";
-            PlcStatus = result;
+            PlcStatus = $"{GetBuildOperationName(operation)} failed: {exception.Message}";
+        }
+        finally
+        {
+            _isPreparingBuild = false;
         }
     }
 
@@ -335,7 +328,7 @@ public partial class MainWindowViewModel : ViewModelBase
         var action = GetBuildOperationName(operation);
         var result = exitCode == 0 ? $"{action} succeeded" :
             _factory.BuildOperationError is { } error ? $"{action} failed: {error}" :
-            $"{action} failed ({exitCode})";
+            $"{action} failed ({exitCode}). See the Build output.";
         PlcStatus = result;
     }
 
@@ -349,11 +342,6 @@ public partial class MainWindowViewModel : ViewModelBase
             BuildOperation.Download => "download",
             _ => "operation"
         };
-
-    private void Download()
-    {
-        StartBuildOperation(BuildOperation.Download, "downloading…", _factory.Download);
-    }
 
     private void RefreshPlcCommands()
     {

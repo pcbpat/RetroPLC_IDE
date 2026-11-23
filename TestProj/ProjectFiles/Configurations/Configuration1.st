@@ -1,7 +1,7 @@
 CONFIGURATION Configuration1
 
     RESOURCE PLC_CPU ON PLC
-        TASK MainTask(INTERVAL := T#200ms, PRIORITY := 1);
+        TASK MainTask(INTERVAL := T#100ms, PRIORITY := 1);
         PROGRAM MainInst WITH MainTask : Main;
     END_RESOURCE
 

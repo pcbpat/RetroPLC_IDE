@@ -1,81 +1,91 @@
-RetroPLC provisioned Zephyr integration
+RetroPLC west-only backend integration
 
-Changed files
-- RetroPLC.BuildHost/ZephyrConfiguration.cs
-- RetroPLC.BuildHost/ZephyrSdkService.cs
-- RetroPLC.BuildHost/Environment/Ac6Environment.cs
-- RetroPLC.BuildHost/FirmwareBuildService.cs
-- RetroPLC.BuildHost.Tests/Program.cs
-- README.md
-- codex_result.txt
+Files added
+  tools/zephyr-backend/retroplc_zephyr/workspace.py
+  tools/zephyr-backend/tests/test_transport.py
 
-Removed the previous SDK Manager menu entry, dialog, view model, service,
-Python helper, packaging entry, and manager-only tests. Removed SDK installer,
-global discovery, and saved selection logic from ZephyrSdkService. Rider's
-safe-delete timed out on the dialog and reported live references for the legacy
-install options. The coordinated cleanup was applied directly and checked by
-building the solution. setup.sh's pre-existing changes were left untouched.
+Files removed
+  tools/zephyr-backend/retroplc_zephyr/boards.py
+  tools/zephyr-backend/retroplc_zephyr/configuration.py
+  tools/zephyr-backend/retroplc_zephyr/sdk.py
+  tools/zephyr-backend/tests/test_backend.py
 
-Provisioned paths and launch
-- RetroPlcInstallation uses the existing application directory resolution.
-  Published applications use the installation beside the executable. An IDE
-  build resolves the solution root from its application directory. The current
-  working directory is independent of this resolution.
-- Defaults are .zephyr/workspace, its retroplc-runtime/app, the flat .zephyr/sdk,
-  and board arduino_opta/stm32h747xx/m7. The attached .zephyr/folders.txt and
-  live tree confirm gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc in the flat SDK.
-- Firmware startup checks managed west, .west/config, the Runtime CMakeLists.txt,
-  zephyr/SDK_VERSION, sdk_version, the SDK CMake package, and the compiler.
-  Existing project and per-operation overrides still resolve against the
-  project. Explicit IDE and RETROPLC_* path overrides resolve against the
-  application root. The inherited generic SDK setting is cleared for west.
-- The existing AC6 launcher uses .zinstaller/.venv/bin/python and bin/west
-  on Linux, sourcing env.sh and checking that CMake and Ninja resolve inside
-  the AC6 tools tree. It sets WEST_CONFIG_LOCAL, ZEPHYR_SDK_INSTALL_DIR and
-  ZEPHYR_TOOLCHAIN_VARIANT=zephyr in the west process.
-- Default firmware stage runs from .zephyr/workspace:
-  west build -p auto --sysbuild -b arduino_opta/stm32h747xx/m7
-    -s <root>/.zephyr/workspace/retroplc-runtime/app
-    -d <project>/Build/Zephyr/arduino_opta_stm32h747xx_m7 --
-    -Dapp_RETROPLC_GENERATED_DIR=<project>/Build/Generated
-    -DZEPHYR_SDK_INSTALL_DIR:PATH=<root>/.zephyr/sdk
-    -DZephyr-sdk_DIR:PATH=<root>/.zephyr/sdk/cmake
-  The full invocation also supplies BOARD, app_BOARD, app-scoped SDK paths,
-  a cache marker for the actual SDK metadata version, and project CMake
-  options. Verify, Clean, Rebuild, artifact publishing and mcumgr upload
-  retain their existing entry points.
-- Auto mode uses a pristine build when SDK path, package, version, or sysbuild
-  mode changes. Never mode requires Rebuild for incompatible cached settings.
-- Removed defaults for .zephyr/zephyr-workspace, .zephyr/sdks and
-  RetroPLC_Runtime/app. Existing valid explicit directory settings are retained.
+Files replaced or modified
+  tools/zephyr-backend/zephyr_environment.proto
+  tools/zephyr-backend/requirements.txt
+  tools/zephyr-backend/README.md
+  tools/zephyr-backend/retroplc_zephyr/__init__.py
+  tools/zephyr-backend/retroplc_zephyr/__main__.py
+  tools/zephyr-backend/retroplc_zephyr/transport.py
+  RetroPLC.BuildHost/ZephyrBackend/ZephyrBackendClient.cs
+  RetroPLC.BuildHost/ZephyrBackend/ZephyrBackendProcess.cs
+  RetroPLC.BuildHost/ZephyrConfiguration.cs
+  RetroPLC.BuildHost/ZephyrBoardService.cs
+  RetroPLC.BuildHost/ZephyrSdkService.cs
+  RetroPLC.BuildHost/FirmwareBuildService.cs
+  RetroPLC.BuildHost.Tests/Program.cs
+  RetroPLC.Shell/ViewModels/MainWindowViewModel.cs
+  setup.sh
+  README.md
+  codex_result.txt
+
+gRPC and workspace discovery
+  GetWorkspaceInfo probes startup readiness and exposes manifest metadata.
+  ValidateWorkspace supplies the workspace root and confirms the manifest's
+  Zephyr project is checked out before firmware preparation.
+  GetProjects and GetWestConfig expose typed west project and configuration data.
+  Grpc.Tools generates the C# bindings. Struct conversion and error mapping
+  stay inside the backend integration. The five former RPCs remain wire
+  compatibility stubs that return UNIMPLEMENTED. BuildHost never invokes them.
+  The managed AC6 Python process remains lazy, shared, cancellable, and
+  loopback-only, with the existing readiness timeout and shutdown ownership.
+  West manifest loads are serialized because its schema validator has shared
+  state. The backend uses documented west APIs for all workspace metadata.
+  setup.sh verifies the new west dependency alongside the gRPC imports.
+  Installed west 1.5.0, grpcio 1.85.3, and protobuf 6.33.6 met the requirements.
+
+Configuration, boards, SDK, and builds
+  ResolveAsync merges operation, project, IDE, environment, and built-in
+  settings locally. It preserves project and installation path bases, CMake
+  option merging, the project JSON shape, sysbuild, and pristine settings.
+  Terminal launch uses AC6 directly. Local configuration, terminal, and
+  clean operations do not need the Python backend.
+  Board targets are opaque strings. The default remains
+  arduino_opta/stm32h747xx/m7. Board API compatibility methods explicitly
+  report unsupported discovery and prevalidation. There is no live board picker.
+  BuildHost checks that the selected SDK directory exists. It supplies the
+  flat SDK path and toolchain variant to AC6 west and CMake, including the
+  existing sysbuild options. Zephyr's CMake determines compatibility.
+  Removed hand parsing of CMakeCache.txt. West handles pristine modes.
+  Rebuild uses always. Clean removes the project's Build tree as before.
+  Structured Text compilation, generated-source paths, artifacts, verify,
+  and mcumgr download remain in BuildHost. Failed processes leave diagnostic
+  output in the Build tool and the UI status points to that output.
 
 Verification
-- Requested parallel dotnet build RetroPLC.sln and dotnet test RetroPLC.sln:
-  exits 1 and 1 in the sandbox. Parallel MSBuild named-pipe binding reports
-  permission denied.
-- Serial offline restore from the local NuGet package cache with audit disabled
-  on the command line: exit 0.
-- dotnet build RetroPLC.sln -m:1 --no-restore: exit 0, 25 analyzer warnings,
-  zero errors.
-- dotnet test RetroPLC.sln -m:1 --no-build --no-restore: exit 0. The solution's
-  BuildHost tests are a console fixture runner and were executed separately.
-- dotnet run --project RetroPLC.BuildHost.Tests --no-build --no-restore:
-  exit 0. Verified root resolution from an unrelated working directory, flat
-  layout validation, missing prerequisites, ARM checks, explicit overrides,
-  managed west arguments and environment, overlays, stale caches, and firmware
-  stage behavior.
-- git diff --check: exit 0.
+  PASS  dotnet build RetroPLC.sln --no-restore -m:1
+  PASS  dotnet test RetroPLC.sln --no-build -m:1 (VSTest target completed)
+  PASS  dotnet run --project RetroPLC.BuildHost.Tests --no-build (twice after
+        serializing manifests). This console runner tests configuration, RPCs,
+        startup, cancellation, shutdown, terminal launch, and build arguments
+        and failures with isolated fixtures.
+  PASS  Python unittest discovery in the AC6 venv (7 tests). Fixtures use
+        the actual west APIs and check that all five legacy RPCs are unsupported.
+  PASS  Offline dependency check, bash -n setup.sh, and git diff --check.
 
-Real firmware verification
-- Linux BuildHost ran the real STruC++ and west pipeline using the already
-  provisioned ARM SDK 1.0.1, AC6 west 1.5.0, CMake 4.1.2 and managed Ninja.
-  Both app and MCUboot completed and BuildHost published firmware.bin,
-  firmware.elf, firmware.hex and firmware.map. Exit 0.
-- The unmodified TestProj first failed with an undeclared LED_OFFh enum
-  member in its ST source. Corrected that one reference only in a temporary
-  smoke-test copy and reran successfully. The repository TestProj is unchanged.
-- A separate attempt with spaces in the build directory reached actual ARM
-  compilation but exited 1 because the pinned Zephyr build emits an unquoted
-  -imacros argument. The successful run used a path without spaces.
-- No dependency downloads, reinstalls, manifest changes or firmware upload
-  took place. Real verification was on Linux.
+Live verification
+  The managed backend returned the installed Runtime manifest, Zephyr checkout,
+  the zephyr project, and manifest.path over gRPC. A temporary copy of TestProj
+  built the default Arduino Opta target with the installed Zephyr SDK 1.0.1.
+  Clean removed its Build output. Pristine sysbuild rebuilt MCUboot and the
+  application and published signed BIN, HEX, ELF, and MAP files. A nonexistent
+  SDK produced a path diagnostic. An empty temporary SDK directory reached
+  CMake and produced the expected Zephyr-sdk package error.
+  Live log and artifacts are under /tmp/retroplc-west-live.6Ba6wihx.
+  The installed workspace, Runtime and SDK were not replaced or edited.
+
+Limitations
+  Use Rebuild to reset existing CMake state after changing SDK installations.
+  The loopback port remains unauthenticated. Desktop interaction, physical
+  firmware upload, macOS, and Windows were not exercised. Existing Shell
+  threading analyzer warnings appeared on a full compilation.

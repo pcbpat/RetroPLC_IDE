@@ -31,6 +31,7 @@ public sealed class DockFactory : Factory
     private IDocumentDock? _documentDock;
     private IToolDock? _terminalDock;
     private readonly ZephyrConfiguration _zephyr = new();
+    private readonly CancellationTokenSource _zephyrShutdown = new();
     private BuildViewModel? _buildTool;
     private ReferencesViewModel? _referencesTool;
     private MessagesViewModel? _messagesTool;
@@ -755,25 +756,34 @@ public sealed class DockFactory : Factory
         }
     }
 
-    public void OpenTerminal()
+    public async Task OpenTerminalAsync()
     {
-        if (_terminalDock is null)
+        if (_terminalDock is not { } dock)
+            return;
+
+        var project = _currentProject;
+        var number = ++_terminalNumber;
+        var token = _zephyrShutdown.Token;
+        TerminalViewModel terminal;
+        try
+        {
+            terminal = await TerminalViewModel.CreateAsync(_zephyr, _projectDirectory, project?.Zephyr, token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
             return;
         }
+        if (token.IsCancellationRequested || !ReferenceEquals(dock, _terminalDock) || !ReferenceEquals(project, _currentProject))
+            return;
 
-        var number = ++_terminalNumber;
-        var terminal = new TerminalViewModel(_zephyr, _projectDirectory, _currentProject?.Zephyr)
-        {
-            Id = $"Terminal-{number}",
-            Title = $"Terminal {number}",
-            CanClose = true
-        };
+        terminal.Id = $"Terminal-{number}";
+        terminal.Title = $"Terminal {number}";
+        terminal.CanClose = true;
         terminal.RequestFocus();
 
-        AddDockable(_terminalDock, terminal);
+        AddDockable(dock, terminal);
         SetActiveDockable(terminal);
-        SetFocusedDockable(_terminalDock, terminal);
+        SetFocusedDockable(dock, terminal);
     }
 
     public void ImportCodesysLibrary(CodesysLibraryImport import)
@@ -953,41 +963,23 @@ public sealed class DockFactory : Factory
         });
     }
 
-    public void Verify() => RunBuildTool((tool, directory, project) =>
-        tool.PrepareVerify(directory, project.Name));
-
-    public void Build() => RunBuildTool((tool, directory, project) =>
-        tool.PrepareBuild(directory, project.Name, project.Zephyr));
-
-    public void Rebuild() => RunBuildTool((tool, directory, project) =>
-        tool.PrepareRebuild(directory, project.Name, project.Zephyr));
-
-    public void Clean() => RunBuildTool((tool, directory, project) =>
-        tool.PrepareClean(directory, project.Zephyr));
-
-    public void Download() => RunBuildTool((tool, directory, project) =>
-        tool.PrepareDownload(directory, project.Name, project.Zephyr));
-
-    private void RunBuildTool(Action<BuildViewModel, string, ProjectDocument> prepare)
+    public async Task RunBuildToolAsync(BuildOperation operation)
     {
-        if (_terminalDock is null || _buildTool is null)
-        {
+        if (_terminalDock is not { } dock || _buildTool is not { } tool ||
+            _projectDirectory is not { } directory || _currentProject is not { } project)
             return;
-        }
 
-        if (_projectDirectory is null || _currentProject is null)
-        {
+        var token = _zephyrShutdown.Token;
+        var session = await tool.PrepareAsync(operation, directory, project.Name, project.Zephyr, token);
+        if (token.IsCancellationRequested || !ReferenceEquals(dock, _terminalDock) || !ReferenceEquals(project, _currentProject))
             return;
-        }
 
-        prepare(_buildTool, _projectDirectory, _currentProject);
-        if (_terminalDock.VisibleDockables?.Contains(_buildTool) != true)
-        {
-            AddDockable(_terminalDock, _buildTool);
-        }
+        tool.StartSession(session);
+        if (dock.VisibleDockables?.Contains(tool) != true)
+            AddDockable(dock, tool);
 
-        SetActiveDockable(_buildTool);
-        SetFocusedDockable(_terminalDock, _buildTool);
+        SetActiveDockable(tool);
+        SetFocusedDockable(dock, tool);
     }
 
     public void SaveAllDocuments()
@@ -1056,7 +1048,9 @@ public sealed class DockFactory : Factory
         _languageServerCancellation?.Cancel();
         _languageServerCancellation?.Dispose();
         _languageServerCancellation = null;
-        await _languageClient.StopAsync().ConfigureAwait(false);
+        await _zephyrShutdown.CancelAsync().ConfigureAwait(false);
+        await Task.WhenAll(_languageClient.StopAsync(), _zephyr.DisposeAsync().AsTask()).ConfigureAwait(false);
+        _zephyrShutdown.Dispose();
     }
 
     private void StartLanguageServer(string projectDirectory)

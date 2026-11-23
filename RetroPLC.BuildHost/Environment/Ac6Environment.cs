@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using RetroPLC.LanguageServerHost;
+using RetroPLC.BuildHost.ZephyrBackend;
 
 namespace RetroPLC.BuildHost;
 
@@ -26,7 +27,7 @@ public sealed class RetroPlcInstallation
 }
 
 /// <summary>Creates process-local AC6 sessions for both PTY and captured commands.</summary>
-public sealed class Ac6Environment
+public sealed class Ac6Environment : IAsyncDisposable
 {
     // Keep initialization in the child. This applies AC6's actual configuration
     // without serializing inherited environment variables into PTY arguments.
@@ -153,9 +154,13 @@ public sealed class Ac6Environment
     public Ac6Environment(RetroPlcInstallation? installation = null)
     {
         Installation = installation ?? new RetroPlcInstallation();
+        Backend = new ZephyrBackendClient(Installation.ApplicationDirectory);
     }
 
     public RetroPlcInstallation Installation { get; }
+    internal ZephyrBackendClient Backend { get; }
+
+    public ValueTask DisposeAsync() => Backend.DisposeAsync();
 
     public BuildProcess CreateTerminal(string? workingDirectory = null, string? hostToolsDirectory = null) =>
         CreateProcess("shell", workingDirectory ?? Installation.ApplicationDirectory, hostToolsDirectory, null, []);

@@ -540,6 +540,11 @@ provision_zephyr() (
     local west="${AC6_VENV}/bin/west"
     local python="${AC6_VENV}/bin/python"
     local sdk_version sdk_gcc sdk_installed_version
+    info "Checking Zephyr backend dependencies in the managed AC6 venv"
+    "${python}" -s -m pip install --disable-pip-version-check -r "${TOOLS_DIR}/zephyr-backend/requirements.txt" ||
+        die "Could not install Zephyr backend dependencies into ${AC6_VENV}."
+    "${python}" -s -c "import grpc, west.manifest; from google.protobuf.struct_pb2 import Struct" ||
+        die "The managed Zephyr backend dependencies could not be imported."
 
     mkdir -p "${ZEPHYR_WORKSPACE_DIR}"
 

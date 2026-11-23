@@ -2,6 +2,8 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using RetroPLC.BuildHost;
 using Dock.Model.Mvvm.Controls;
 using RetroPLC.Shell.Controls;
@@ -14,12 +16,11 @@ public sealed class TerminalViewModel : Tool
 {
     private bool _focusPending;
 
-    public TerminalViewModel(ZephyrConfiguration configuration, string? projectDirectory,
-        ZephyrBuildConfiguration? project)
+    private TerminalViewModel(BuildProcess? launch, string? error)
     {
-        try
+        LaunchError = error;
+        if (launch is not null)
         {
-            var launch = configuration.CreateTerminal(projectDirectory, project);
             Terminal = new DockTerminalView
             {
                 Process = launch.Executable,
@@ -27,10 +28,19 @@ public sealed class TerminalViewModel : Tool
                 StartingDirectory = launch.WorkingDirectory
             };
         }
+    }
+
+    public static async Task<TerminalViewModel> CreateAsync(ZephyrConfiguration configuration, string? projectDirectory,
+        ZephyrBuildConfiguration? project, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return new TerminalViewModel(await configuration.CreateTerminalAsync(projectDirectory, project, cancellationToken), null);
+        }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
                                            PlatformNotSupportedException or ArgumentException or InvalidOperationException)
         {
-            LaunchError = exception.Message;
+            return new TerminalViewModel(null, exception.Message);
         }
     }
 

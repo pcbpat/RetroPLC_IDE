@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 using System;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Dock.Model.Mvvm.Controls;
@@ -30,34 +32,18 @@ public sealed class BuildViewModel : Tool
     public BuildTerminalSession Session { get; }
     public string? OperationError { get; private set; }
 
-    public void PrepareVerify(string projectDirectory, string projectName) =>
-        StartSession(_buildService.StartVerify(projectDirectory, projectName));
+    public Task<FirmwareBuildSession> PrepareAsync(BuildOperation operation, string directory, string name,
+        ZephyrBuildConfiguration? project, CancellationToken cancellationToken) => operation switch
+    {
+        BuildOperation.Verify => Task.FromResult(_buildService.StartVerify(directory, name)),
+        BuildOperation.Build => _buildService.StartBuildAsync(directory, name, project, cancellationToken: cancellationToken),
+        BuildOperation.Rebuild => _buildService.StartRebuildAsync(directory, name, project, cancellationToken: cancellationToken),
+        BuildOperation.Clean => _buildService.StartCleanAsync(directory, project, cancellationToken: cancellationToken),
+        BuildOperation.Download => _buildService.StartDownloadAsync(directory, name, project, cancellationToken: cancellationToken),
+        _ => throw new ArgumentOutOfRangeException(nameof(operation))
+    };
 
-    public void PrepareBuild(string projectDirectory, string projectName) =>
-        PrepareBuild(projectDirectory, projectName, null);
-
-    public void PrepareBuild(string projectDirectory, string projectName, ZephyrBuildConfiguration? project) =>
-        StartSession(_buildService.StartBuild(projectDirectory, projectName, project));
-
-    public void PrepareRebuild(string projectDirectory, string projectName) =>
-        PrepareRebuild(projectDirectory, projectName, null);
-
-    public void PrepareRebuild(string projectDirectory, string projectName, ZephyrBuildConfiguration? project) =>
-        StartSession(_buildService.StartRebuild(projectDirectory, projectName, project));
-
-    public void PrepareClean(string projectDirectory) =>
-        PrepareClean(projectDirectory, null);
-
-    public void PrepareClean(string projectDirectory, ZephyrBuildConfiguration? project) =>
-        StartSession(_buildService.StartClean(projectDirectory, project));
-
-    public void PrepareDownload(string projectDirectory, string projectName) =>
-        PrepareDownload(projectDirectory, projectName, null);
-
-    public void PrepareDownload(string projectDirectory, string projectName, ZephyrBuildConfiguration? project) =>
-        StartSession(_buildService.StartDownload(projectDirectory, projectName, project));
-
-    private void StartSession(FirmwareBuildSession session)
+    public void StartSession(FirmwareBuildSession session)
     {
         OperationError = null;
         _buildSession = session;

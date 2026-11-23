@@ -97,10 +97,13 @@ public sealed class FirmwareBuildSession
     }
 }
 
-public sealed class FirmwareBuildService
+public sealed class FirmwareBuildService : IAsyncDisposable
 {
+    private readonly bool _ownsConfiguration;
+
     public FirmwareBuildService() : this(new ZephyrConfiguration())
     {
+        _ownsConfiguration = true;
     }
 
     public FirmwareBuildService(ZephyrConfiguration configuration)
@@ -110,6 +113,8 @@ public sealed class FirmwareBuildService
 
     public ZephyrConfiguration Configuration { get; }
 
+    public ValueTask DisposeAsync() => _ownsConfiguration ? Configuration.DisposeAsync() : ValueTask.CompletedTask;
+
     public FirmwareBuildSession StartVerify(string projectDirectory, string projectName) =>
         new(
             this,
@@ -118,13 +123,11 @@ public sealed class FirmwareBuildService
             BuildStage.StructuredText,
             null);
 
-    public FirmwareBuildSession StartBuild(string projectDirectory, string projectName) =>
-        StartBuild(projectDirectory, projectName, null);
-
-    public FirmwareBuildSession StartBuild(string projectDirectory, string projectName,
-        ZephyrBuildConfiguration? project, ZephyrBuildConfiguration? overrides = null)
+    public async Task<FirmwareBuildSession> StartBuildAsync(string projectDirectory, string projectName,
+        ZephyrBuildConfiguration? project = null, ZephyrBuildConfiguration? overrides = null,
+        CancellationToken cancellationToken = default)
     {
-        var context = ResolveZephyrBuildContext(projectDirectory, project, overrides);
+        var context = await ResolveZephyrBuildContextAsync(projectDirectory, project, overrides, cancellationToken).ConfigureAwait(false);
         return new FirmwareBuildSession(
             this,
             BuildOperation.Build,
@@ -134,13 +137,11 @@ public sealed class FirmwareBuildService
             context.Settings.PristineMode!);
     }
 
-    public FirmwareBuildSession StartRebuild(string projectDirectory, string projectName) =>
-        StartRebuild(projectDirectory, projectName, null);
-
-    public FirmwareBuildSession StartRebuild(string projectDirectory, string projectName,
-        ZephyrBuildConfiguration? project, ZephyrBuildConfiguration? overrides = null)
+    public async Task<FirmwareBuildSession> StartRebuildAsync(string projectDirectory, string projectName,
+        ZephyrBuildConfiguration? project = null, ZephyrBuildConfiguration? overrides = null,
+        CancellationToken cancellationToken = default)
     {
-        var context = ResolveZephyrBuildContext(projectDirectory, project, overrides);
+        var context = await ResolveZephyrBuildContextAsync(projectDirectory, project, overrides, cancellationToken).ConfigureAwait(false);
         return new FirmwareBuildSession(
             this,
             BuildOperation.Rebuild,
@@ -150,30 +151,26 @@ public sealed class FirmwareBuildService
             "always");
     }
 
-    public FirmwareBuildSession StartClean(string projectDirectory) =>
-        StartClean(projectDirectory, null);
-
-    public FirmwareBuildSession StartClean(string projectDirectory, ZephyrBuildConfiguration? project,
-        ZephyrBuildConfiguration? overrides = null)
+    public async Task<FirmwareBuildSession> StartCleanAsync(string projectDirectory, ZephyrBuildConfiguration? project = null,
+        ZephyrBuildConfiguration? overrides = null, CancellationToken cancellationToken = default)
     {
         projectDirectory = GetProjectDirectory(projectDirectory);
+        var settings = await Configuration.ResolveAsync(projectDirectory, project, overrides, cancellationToken).ConfigureAwait(false);
         return new FirmwareBuildSession(
             this,
             BuildOperation.Clean,
             Configuration.Environment.CreateCMake(
-                projectDirectory, Configuration.ResolveHostTools(projectDirectory, project, overrides),
+                projectDirectory, settings.HostToolsDirectory,
                 ["-E", "remove_directory", Path.Combine(projectDirectory, "Build")]),
             BuildStage.Clean,
             null);
     }
 
-    public FirmwareBuildSession StartDownload(string projectDirectory, string projectName) =>
-        StartDownload(projectDirectory, projectName, null);
-
-    public FirmwareBuildSession StartDownload(string projectDirectory, string projectName,
-        ZephyrBuildConfiguration? project, ZephyrBuildConfiguration? overrides = null)
+    public async Task<FirmwareBuildSession> StartDownloadAsync(string projectDirectory, string projectName,
+        ZephyrBuildConfiguration? project = null, ZephyrBuildConfiguration? overrides = null,
+        CancellationToken cancellationToken = default)
     {
-        var context = ResolveZephyrBuildContext(projectDirectory, project, overrides);
+        var context = await ResolveZephyrBuildContextAsync(projectDirectory, project, overrides, cancellationToken).ConfigureAwait(false);
         return new FirmwareBuildSession(
             this,
             BuildOperation.Download,
@@ -224,26 +221,6 @@ public sealed class FirmwareBuildService
         var sysbuild = context.Settings.UseSysbuild!.Value;
         var generatedOption = sysbuild ? $"{context.ApplicationName}_RETROPLC_GENERATED_DIR" : "RETROPLC_GENERATED_DIR";
         var sdkDirectory = context.Settings.SdkDirectory!;
-        var cachePath = Path.Combine(context.BuildDirectory, "CMakeCache.txt");
-        if (pristineMode != "always" && File.Exists(cachePath))
-        {
-            var cachedSdk = ReadCMakeCachePath(cachePath, "ZEPHYR_SDK_INSTALL_DIR");
-            var cachedSysbuild = ReadCMakeCachePath(cachePath, "APP_DIR") is not null;
-            var imageCache = sysbuild
-                ? Path.Combine(context.BuildDirectory, context.ApplicationName, "CMakeCache.txt")
-                : cachePath;
-            var cachedPackage = ReadCMakeCachePath(imageCache, "Zephyr-sdk_DIR");
-            var cachedVersion = ReadCMakeCachePath(cachePath, "RETROPLC_SDK_VERSION");
-            if (cachedSdk is null || !SameDirectory(cachedSdk, sdkDirectory) || cachedSysbuild != sysbuild ||
-                cachedVersion != context.SdkVersion ||
-                (cachedPackage is not null && !SameDirectory(cachedPackage, Path.Combine(sdkDirectory, "cmake"))))
-            {
-                if (pristineMode == "never")
-                    throw new InvalidOperationException(
-                        "The build directory uses different SDK or sysbuild settings. Rebuild to apply the selected configuration.");
-                pristineMode = "always";
-            }
-        }
         var arguments = new List<string>
         {
             "build", "-p", pristineMode, sysbuild ? "--sysbuild" : "--no-sysbuild", "-b", context.Settings.BoardTarget!,
@@ -255,7 +232,6 @@ public sealed class FirmwareBuildService
 
         arguments.Add($"-DBOARD:STRING={context.Settings.BoardTarget}");
         arguments.Add($"-D{generatedOption}={context.GeneratedDirectory}");
-        arguments.Add($"-DRETROPLC_SDK_VERSION:INTERNAL={context.SdkVersion}");
         arguments.Add($"-DZEPHYR_SDK_INSTALL_DIR:PATH={sdkDirectory}");
         arguments.Add($"-DZephyr-sdk_DIR:PATH={Path.Combine(sdkDirectory, "cmake")}");
         if (sysbuild)
@@ -308,31 +284,23 @@ public sealed class FirmwareBuildService
         return new BuildProcess("/usr/bin/env", arguments, workingDirectory);
     }
 
-    private ZephyrBuildContext ResolveZephyrBuildContext(string projectDirectory,
-        ZephyrBuildConfiguration? project, ZephyrBuildConfiguration? overrides)
+    private async Task<ZephyrBuildContext> ResolveZephyrBuildContextAsync(string projectDirectory,
+        ZephyrBuildConfiguration? project, ZephyrBuildConfiguration? overrides, CancellationToken cancellationToken)
     {
-        var settings = Configuration.Resolve(projectDirectory, project, overrides);
-        if (!ZephyrBoardService.IsBoardTarget(settings.BoardTarget))
-            throw new InvalidOperationException(
-                "Select a valid Zephyr board target in the project or set RETROPLC_ZEPHYR_BOARD.");
-        var workspace = ZephyrConfiguration.RequireWorkspace(settings.WorkspaceDirectory);
-        var sdkPin = Path.Combine(workspace, "zephyr", "SDK_VERSION");
-        if (!File.Exists(sdkPin) || new FileInfo(sdkPin).Length == 0)
-            throw new FileNotFoundException(
-                $"Zephyr sources are incomplete at '{workspace}' (missing or empty zephyr/SDK_VERSION). " +
-                "Run setup.sh or check your explicit workspace override.", sdkPin);
+        var settings = await Configuration.ResolveAsync(projectDirectory, project, overrides, cancellationToken).ConfigureAwait(false);
+        var backend = Configuration.Environment.Backend;
+        var validation = await backend.ValidateWorkspaceAsync(settings.WorkspaceDirectory!, cancellationToken).ConfigureAwait(false);
+        if (!validation.Workspace.ZephyrCloned)
+            throw new DirectoryNotFoundException(
+                $"The manifest's Zephyr checkout is missing at '{validation.Workspace.ZephyrDirectory}'. Run setup.sh.");
+        settings = settings with { WorkspaceDirectory = validation.Workspace.Directory };
         if (settings.ApplicationDirectory is null ||
             !File.Exists(Path.Combine(settings.ApplicationDirectory, "CMakeLists.txt")))
             throw new DirectoryNotFoundException(
                 $"No Zephyr application exists at '{settings.ApplicationDirectory}'. " +
                 "Run setup.sh or check the applicationDirectory override.");
 
-        if (settings.SdkDirectory is null)
-            throw new InvalidOperationException("RetroPLC Zephyr SDK was not found. Run setup.sh to provision it.");
-        var sdk = ZephyrSdkService.ValidateInstallation(settings.SdkDirectory);
-        if (settings.BoardTarget!.Split('/')[0] == "arduino_opta" && !sdk.Toolchains.Contains("arm-zephyr-eabi"))
-            throw new IOException($"The Zephyr SDK at '{settings.SdkDirectory}' is missing its ARM compiler. " +
-                                  "Run setup.sh or check the SDK override.");
+        ZephyrSdkService.RequireDirectory(settings.SdkDirectory!);
         if (settings.PristineMode is not ("auto" or "always" or "never"))
             throw new InvalidOperationException("Zephyr pristine mode must be auto, always, or never.");
         foreach (var option in settings.CMakeOptions!)
@@ -348,7 +316,7 @@ public sealed class FirmwareBuildService
             settings.BuildDirectory ?? Path.Combine(buildRoot, "Zephyr", MakeSafeDirectoryName(settings.BoardTarget!)),
             Path.Combine(buildRoot, "Artifacts"),
             Path.GetFileName(Path.TrimEndingDirectorySeparator(settings.ApplicationDirectory)),
-            sdk.Version, settings);
+            settings);
     }
 
     internal static void PublishBuildArtifacts(ZephyrBuildContext context)
@@ -356,10 +324,6 @@ public sealed class FirmwareBuildService
         var imageBuildDirectory = context.Settings.UseSysbuild!.Value
             ? Path.Combine(context.BuildDirectory, context.ApplicationName)
             : context.BuildDirectory;
-        var sdkPackage = ReadCMakeCachePath(Path.Combine(imageBuildDirectory, "CMakeCache.txt"), "Zephyr-sdk_DIR");
-        if (sdkPackage is not null && !SameDirectory(sdkPackage, Path.Combine(context.Settings.SdkDirectory!, "cmake")))
-            throw new IOException($"Zephyr configured SDK at '{sdkPackage}' instead of the selected SDK at '{context.Settings.SdkDirectory}'.");
-
         var zephyrOutputDirectory = Path.Combine(imageBuildDirectory, "zephyr");
         var artifacts = new[]
         {
@@ -387,20 +351,6 @@ public sealed class FirmwareBuildService
     private string GetProjectDirectory(string projectDirectory) =>
         Path.GetFullPath(projectDirectory, Configuration.Environment.Installation.ApplicationDirectory);
 
-    private static string? ReadCMakeCachePath(string cachePath, string key) =>
-        File.Exists(cachePath) ? File.ReadLines(cachePath).FirstOrDefault(line =>
-            line.StartsWith(key + ":", StringComparison.Ordinal))?.Split('=', 2).Last() : null;
-
-    private static bool SameDirectory(string first, string second)
-    {
-        if (!Path.IsPathFullyQualified(first) || !Path.IsPathFullyQualified(second))
-            return false;
-
-        return string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(first)),
-            Path.TrimEndingDirectorySeparator(Path.GetFullPath(second)),
-            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
-    }
-
     private static bool IsTestSource(string relativePath) =>
         relativePath.StartsWith(
             $"ProjectFiles{Path.DirectorySeparatorChar}Tests{Path.DirectorySeparatorChar}",
@@ -418,12 +368,13 @@ public sealed class FirmwareBuildService
     private static string MakeSafeDirectoryName(string value)
     {
         var invalidCharacters = Path.GetInvalidFileNameChars();
-        return new string(value
+        var name = new string(value
             .Select(character =>
                 character is '/' or '\\' || invalidCharacters.Contains(character)
                     ? '_'
                     : character)
             .ToArray());
+        return name is "" or "." or ".." ? "_" + name : name;
     }
 }
 
@@ -442,5 +393,4 @@ internal sealed record ZephyrBuildContext(
     string BuildDirectory,
     string ArtifactsDirectory,
     string ApplicationName,
-    string SdkVersion,
     ZephyrBuildConfiguration Settings);

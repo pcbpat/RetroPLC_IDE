@@ -16,6 +16,12 @@
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
             <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
         </Content>
+        <Content Include="../tools/zephyr-backend/retroplc_zephyr/*.py"
+                 Link="tools/zephyr-backend/retroplc_zephyr/%(Filename)%(Extension)"
+                 CopyToPublishDirectory="PreserveNewest" />
+        <Content Include="../tools/zephyr-backend/requirements.txt"
+                 Link="tools/zephyr-backend/requirements.txt"
+                 CopyToPublishDirectory="PreserveNewest" />
         <AvaloniaResource Include="Assets\**"
                           Exclude="Assets\Syntax\*.tmLanguage.json;Assets\Syntax\LICENSE.vscode-textmate.txt"/>
         <Content Include="Assets\Syntax\*.tmLanguage.json;Assets\Syntax\LICENSE.vscode-textmate.txt">
