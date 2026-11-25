@@ -179,12 +179,11 @@
                 <MenuItem Header="_Build">
                     <MenuItem Header="Verify PLC Project" Command="{Binding VerifyCommand}" />
                     <MenuItem Header="Build PLC Project" InputGesture="F7" Command="{Binding BuildCommand}" />
-                    <MenuItem Header="Download PLC Project" Command="{Binding DownloadCommand}" />
                     <MenuItem Header="Rebuild PLC Project" Command="{Binding RebuildCommand}" />
+                    <MenuItem Header="Download PLC Project" Command="{Binding DownloadCommand}" />
                     <MenuItem Header="Clean PLC Project" Command="{Binding CleanCommand}" />
                     <Separator />
                     <MenuItem Header="Build Solution" Command="{Binding BuildCommand}" />
-                    <MenuItem Header="Rebuild Solution" Command="{Binding RebuildCommand}" />
                     <MenuItem Header="Clean Solution" Command="{Binding CleanCommand}" />
                     <Separator />
                     <MenuItem Header="Check All Objects" Command="{Binding BuildCommand}" />
@@ -297,6 +296,11 @@
                                               LargeIcon="{x:Static icons:Se98Icons+Actions+Size24.SystemRun}"
                                               SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.SystemRun}"
                                               Command="{Binding BuildCommand}" />
+                <commonControls:ToolBarButton Text="Rebuild"
+                                              LargeIcon="{x:Static icons:Se98Icons+Actions+Size24.ViewRefresh}"
+                                              SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.ViewRefresh}"
+                                              ToolTip.Tip="Rebuild Project"
+                                              Command="{Binding RebuildCommand}" />
                 <commonControls:ToolBarButton Text="Download"
                                               LargeIcon="{x:Static icons:Se98Icons+Actions+Size24.Download}"
                                               SmallIcon="{x:Static icons:Se98Icons+Actions+Size16.Download}"

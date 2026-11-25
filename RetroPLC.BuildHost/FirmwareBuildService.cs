@@ -72,7 +72,8 @@ public sealed class FirmwareBuildService(BuildEnvironment? environment = null)
         var command = operation switch
         {
             BuildOperation.Verify => "plc-transpile",
-            BuildOperation.Build or BuildOperation.Rebuild or BuildOperation.Download => "plc-build",
+            BuildOperation.Build or BuildOperation.Download => "plc-build",
+            BuildOperation.Rebuild => "plc-rebuild",
             BuildOperation.Clean => "plc-clean",
             _ => throw new ArgumentOutOfRangeException(nameof(operation))
         };

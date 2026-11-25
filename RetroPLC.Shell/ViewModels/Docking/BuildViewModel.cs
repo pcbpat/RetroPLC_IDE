@@ -41,6 +41,7 @@ public sealed class BuildViewModel : Tool
         OperationError = null;
         OperationStatus = null;
         Output.Clear();
+        Output.Add($"{operation} started.");
         if (IsDownloadActive)
             DownloadActivityChanged?.Invoke();
 
@@ -59,7 +60,7 @@ public sealed class BuildViewModel : Tool
             {
                 "progress" when message.Transmitted is { } sent && message.Total is { } total =>
                     $"{message.Step} {sent:N0} / {total:N0} bytes",
-                "progress" => message.Step,
+                "progress" when message.Step is { } step => $"{operation}: {step}",
                 "error" => $"{message.Command} [{message.Code}] {message.Message}".Trim(),
                 _ => null
             };
@@ -86,7 +87,9 @@ public sealed class BuildViewModel : Tool
             "update_requested" => "Firmware update requested. Verify the running image after reboot.",
             _ => $"{operation} succeeded."
         } : null;
-        Output.Add(OperationStatus ?? OperationError ?? $"{operation} failed ({result.ExitCode}).");
+        Output.Add(OperationStatus ?? (OperationError is { } error
+            ? $"{operation} failed: {error}"
+            : $"{operation} failed ({result.ExitCode})."));
         _operation = null;
         _activeOperation = null;
         if (operation == BuildOperation.Download)

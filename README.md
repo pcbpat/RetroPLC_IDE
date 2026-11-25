@@ -114,7 +114,8 @@ the BuildEnvironment root. The interactive terminal opens a Pixi shell there.
 | IDE action | West command |
 | --- | --- |
 | Verify | `plc-transpile` |
-| Build / Rebuild | `plc-build` |
+| Build | `plc-build` (incremental) |
+| Rebuild | `plc-rebuild` (pristine) |
 | Clean | `plc-clean` |
 | Download | `plc-build`, then `plc-upload` after a successful build and artifact validation |
 
@@ -137,9 +138,8 @@ Set the serial port explicitly. UDP configuration uses `udpHostname` and
 `already_installed` means the matching image is active. `update_requested`
 means the update has started and the running image still needs verification.
 
-Build and Rebuild both use the pristine build from BuildEnvironment. Generated
-sources and the validated debug map live in `Build/Generated`. The ELF, signed
-BIN and HEX, and linker map live in `Build/Zephyr/app/zephyr`. Clean removes
+Generated sources and the validated debug map live in `Build/Generated`. The
+ELF, signed BIN and HEX, and linker map live in `Build/Zephyr/app/zephyr`. Clean removes
 `Build/Generated` and `Build/Zephyr`. Older `Build/Artifacts` directories may
 still exist on disk.
 

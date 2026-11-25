@@ -187,11 +187,11 @@ public partial class MainWindowViewModel : ViewModelBase
         RunCommand = new RelayCommand(Run, () => _isLoggedIn && !_isRunning);
         StopCommand = new RelayCommand(Stop, () => _isLoggedIn && _isRunning);
         ResetPlcCommand = new RelayCommand(ResetPlc, () => _isLoggedIn);
-        VerifyCommand = new AsyncRelayCommand(VerifyAsync, () => _isProjectOpen);
-        BuildCommand = new AsyncRelayCommand(BuildAsync, () => _isProjectOpen);
-        RebuildCommand = new AsyncRelayCommand(RebuildAsync, () => _isProjectOpen);
-        CleanCommand = new AsyncRelayCommand(CleanAsync, () => _isProjectOpen);
-        DownloadCommand = new AsyncRelayCommand(DownloadAsync, () => _isProjectOpen && !_isRunning);
+        VerifyCommand = new AsyncRelayCommand(VerifyAsync, CanStartBuildOperation);
+        BuildCommand = new AsyncRelayCommand(BuildAsync, CanStartBuildOperation);
+        RebuildCommand = new AsyncRelayCommand(RebuildAsync, CanStartBuildOperation);
+        CleanCommand = new AsyncRelayCommand(CleanAsync, CanStartBuildOperation);
+        DownloadCommand = new AsyncRelayCommand(DownloadAsync, () => CanStartBuildOperation() && !_isRunning);
         _factory.BuildOperationExited += OnBuildOperationExited;
         _factory.DownloadActivityChanged += RefreshPlcCommands;
         ApplyTheme();
@@ -357,13 +357,15 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private Task VerifyAsync() => StartBuildOperationAsync(BuildOperation.Verify, "verifying…");
     private Task BuildAsync() => StartBuildOperationAsync(BuildOperation.Build, "building…");
-    private Task RebuildAsync() => StartBuildOperationAsync(BuildOperation.Rebuild, "rebuilding…");
+    private Task RebuildAsync() => StartBuildOperationAsync(BuildOperation.Rebuild, "Rebuilding…");
     private Task CleanAsync() => StartBuildOperationAsync(BuildOperation.Clean, "cleaning…");
     private Task DownloadAsync() => StartBuildOperationAsync(BuildOperation.Download, "downloading…");
 
+    private bool CanStartBuildOperation() => _isProjectOpen && !_isPreparingBuild && !_factory.IsDownloadActive;
+
     private async Task StartBuildOperationAsync(BuildOperation operation, string status)
     {
-        if (_isPreparingBuild || _factory.IsDownloadActive)
+        if (!CanStartBuildOperation())
             return;
 
         _isPreparingBuild = true;
@@ -403,7 +405,7 @@ public partial class MainWindowViewModel : ViewModelBase
         {
             BuildOperation.Verify => "verification",
             BuildOperation.Build => "build",
-            BuildOperation.Rebuild => "rebuild",
+            BuildOperation.Rebuild => "Rebuild",
             BuildOperation.Clean => "clean",
             BuildOperation.Download => "download",
             _ => "operation"
@@ -418,6 +420,10 @@ public partial class MainWindowViewModel : ViewModelBase
         RunCommand.NotifyCanExecuteChanged();
         StopCommand.NotifyCanExecuteChanged();
         ResetPlcCommand.NotifyCanExecuteChanged();
+        VerifyCommand.NotifyCanExecuteChanged();
+        BuildCommand.NotifyCanExecuteChanged();
+        RebuildCommand.NotifyCanExecuteChanged();
+        CleanCommand.NotifyCanExecuteChanged();
         DownloadCommand.NotifyCanExecuteChanged();
     }
 

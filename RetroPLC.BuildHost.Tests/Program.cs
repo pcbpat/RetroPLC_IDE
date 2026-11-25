@@ -9,7 +9,7 @@ if (args is ["--debug-monitor"])
 if (args is ["--live", var liveProject])
 {
     var live = new FirmwareBuildService();
-    foreach (var operation in new[] { BuildOperation.Verify, BuildOperation.Build, BuildOperation.Clean })
+    foreach (var operation in new[] { BuildOperation.Verify, BuildOperation.Build, BuildOperation.Rebuild, BuildOperation.Clean })
     {
         var result = await live.RunAsync(operation, liveProject, output: new InlineProgress<string>(Console.WriteLine));
         Check(result.Success, $"{operation}: {result.Error}");
@@ -45,7 +45,7 @@ try
         project=$5
         mode=$(cat mode)
         case "$command" in
-          plc-transpile|plc-build)
+          plc-transpile|plc-build|plc-rebuild)
             case "$mode" in
               fail) exit 23 ;;
               slow)
@@ -64,13 +64,14 @@ try
             printf 'debug' > "$generated/generated_debug.cpp"
             printf '%s' '{"version":2,"md5":"0123456789abcdef0123456789abcdef","arrays":[],"leaves":[]}' > "$generated/debug_map.json"
             if [ "$mode" = bad-map ]; then printf '{}' > "$generated/debug_map.json"; fi
-            if [ "$command" = plc-build ]; then
+            if [ "$command" != plc-transpile ]; then
               output="$project/Build/Zephyr/app/zephyr"
               mkdir -p "$output"
               for artifact in zephyr.elf zephyr.signed.bin zephyr.signed.hex zephyr.map; do
                 printf 'firmware' > "$output/$artifact"
               done
             fi
+            echo '{"event":"progress","step":"Compiling"}'
             echo 'Compiler output' >&2
             echo '{"event":"result","success":true,"status":"completed"}'
             ;;
@@ -136,12 +137,26 @@ try
         service.RunAsync(operation, project, device: device, output: new InlineProgress<string>(output.Enqueue),
             events: new InlineProgress<BuildEvent>(events.Add), cancellationToken: cancellationToken);
 
-    Mode("ok");
-    Check((await Run(BuildOperation.Verify)).Success && File.ReadAllLines(calls).Contains("plc-transpile"), "verify");
-    Check((await Run(BuildOperation.Build)).Success && output.Contains("Compiler output") &&
-          output.Contains("compiler diagnostic"), "build and both output streams");
-    Check((await Run(BuildOperation.Rebuild)).Success &&
-          File.ReadAllLines(calls).Count(line => line == "plc-build") == 2, "rebuild delegates pristine policy");
+    foreach (var (operation, westCommand) in new[]
+    {
+        (BuildOperation.Verify, "plc-transpile"),
+        (BuildOperation.Build, "plc-build"),
+        (BuildOperation.Rebuild, "plc-rebuild")
+    })
+    {
+        Mode("ok");
+        output.Clear();
+        Check((await Run(operation)).Success &&
+              File.ReadAllLines(calls).SequenceEqual(new[] { "run", "--quiet", "west", westCommand, project }),
+            $"{operation} command");
+        Check(events.Any(e => e is { Kind: "progress", Step: "Compiling" }) &&
+              output.Contains("Compiler output") && output.Contains("compiler diagnostic"),
+            $"{operation} progress and both output streams");
+    }
+    Mode("invalid");
+    Check((await Run(BuildOperation.Rebuild)).Error == "plc-rebuild returned malformed JSON.", "rebuild protocol error");
+    Mode("fail");
+    Check((await Run(BuildOperation.Rebuild)).ExitCode == 23, "rebuild process failure");
     Mode("fail");
     Check((await Run(BuildOperation.Download)).ExitCode == 23 && !File.ReadAllLines(calls).Contains("plc-upload"),
         "failed build blocks upload even with existing firmware");
@@ -171,30 +186,38 @@ try
     Mode("nonzero");
     Check((await Run(BuildOperation.Build)).ExitCode == 29, "nonzero overrides JSON success");
 
-    Mode("slow");
-    using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-    var running = Run(BuildOperation.Download, cancellation.Token);
     var childFile = Path.Combine(installation, "child");
-    while (!File.Exists(childFile))
+    foreach (var operation in new[] { BuildOperation.Download, BuildOperation.Rebuild })
     {
-        Check(!running.IsCompleted, "fixture started");
-        await Task.Delay(20, cancellation.Token);
-    }
-    var child = int.Parse(File.ReadAllText(childFile));
-    await cancellation.CancelAsync();
-    try
-    {
-        await running.WaitAsync(TimeSpan.FromSeconds(5));
-        throw new Exception("Expected cancellation.");
-    }
-    catch (OperationCanceledException)
-    {
+        Mode("slow");
+        File.Delete(childFile);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var running = Run(operation, cancellation.Token);
+        while (!File.Exists(childFile) || new FileInfo(childFile).Length == 0)
+        {
+            Check(!running.IsCompleted, $"{operation} fixture started");
+            await Task.Delay(20, cancellation.Token);
+        }
+        var child = int.Parse(File.ReadAllText(childFile));
+
+        if (operation == BuildOperation.Download)
+        {
+            using var waitingCancellation = new CancellationTokenSource();
+            var waitingRebuild = Run(BuildOperation.Rebuild, waitingCancellation.Token);
+            Check(!waitingRebuild.IsCompleted, "rebuild waits while another operation is active");
+            await waitingCancellation.CancelAsync();
+            await CheckCancelled(waitingRebuild);
+            Check(!File.ReadAllLines(calls).Contains("plc-rebuild"), "queued rebuild did not start");
+        }
+
+        await cancellation.CancelAsync();
+        await CheckCancelled(running);
         Check(!File.ReadAllLines(calls).Contains("plc-upload"), "cancelled build blocks upload");
         var stat = $"/proc/{child}/stat";
         var deadline = Stopwatch.StartNew();
         while (ChildIsRunning(stat) && deadline.Elapsed < TimeSpan.FromSeconds(2))
             await Task.Delay(20);
-        Check(!ChildIsRunning(stat), "process tree stopped");
+        Check(!ChildIsRunning(stat), $"{operation} process tree stopped");
     }
 
     Mode("ok");
@@ -211,6 +234,18 @@ try
 finally
 {
     Directory.Delete(root, recursive: true);
+}
+
+static async Task CheckCancelled(Task<BuildResult> operation)
+{
+    try
+    {
+        await operation.WaitAsync(TimeSpan.FromSeconds(5));
+        throw new InvalidOperationException("Expected cancellation.");
+    }
+    catch (OperationCanceledException)
+    {
+    }
 }
 
 static bool ChildIsRunning(string path)
