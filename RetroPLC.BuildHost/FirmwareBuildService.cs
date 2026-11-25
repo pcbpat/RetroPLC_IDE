@@ -89,9 +89,11 @@ public sealed class FirmwareBuildService(BuildEnvironment? environment = null)
         if (operation != BuildOperation.Clean)
             ValidateArtifacts(project, operation != BuildOperation.Verify);
 
-        return operation == BuildOperation.Download
-            ? await ExecuteAsync("plc-upload", project, uploadOptions, output, events, cancellationToken).ConfigureAwait(false)
-            : result;
+        if (operation != BuildOperation.Download)
+            return result;
+
+        events?.Report(new BuildEvent { Kind = "progress", Command = "plc-upload", Step = "Preparing upload…" });
+        return await ExecuteAsync("plc-upload", project, uploadOptions, output, events, cancellationToken).ConfigureAwait(false);
     }, cancellationToken);
 
     public Task<BuildResult> VerifyFirmwareAsync(string project, DeviceConnection device, bool confirm = false,
@@ -137,7 +139,7 @@ public sealed class FirmwareBuildService(BuildEnvironment? environment = null)
                 switch (message?.Kind)
                 {
                     case "progress":
-                        events?.Report(message);
+                        events?.Report(message with { Command = command });
                         break;
                     case "result":
                     case "error":

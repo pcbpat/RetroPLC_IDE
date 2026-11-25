@@ -22,10 +22,13 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             var viewModel = new MainWindowViewModel();
-            desktop.MainWindow = new MainWindow
+            var window = new MainWindow
             {
                 DataContext = viewModel,
             };
+            viewModel.DownloadDialogRequested += download =>
+                new DownloadWindow { DataContext = download }.ShowDialog(window);
+            desktop.MainWindow = window;
             desktop.Exit += (_, _) => viewModel.ShutdownAsync().GetAwaiter().GetResult();
         }
 

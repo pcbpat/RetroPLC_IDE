@@ -1,41 +1,43 @@
-Rebuild command
+Firmware download progress dialog
 
-Added Rebuild beside Build in the Verify, Build, Rebuild toolbar sequence. It
-uses the existing refresh icon and the "Rebuild Project" tooltip. The Build
-menu has one Rebuild entry, bound to the same command as the toolbar. Build
-and Rebuild share the project-open and build-idle checks.
+Download now opens a themed modal from the existing toolbar and menu command.
+The dialog follows compilation, upload preparation, transfer, and subsequent
+deployment steps. It calculates transfer percentage from NDJSON byte counts,
+retains the last valid measurement when later steps omit counts, and reserves
+100% for a successful terminal result and exit code 0. An already-installed
+image is a success. Failure shows the available error message.
 
-BuildHost runs Verify via plc-transpile, incremental Build via plc-build,
-pristine Rebuild via plc-rebuild, and Clean via plc-clean. Download uses
-plc-build followed by plc-upload after successful artifact validation. Rebuild
-uses the existing process, NDJSON, cancellation, and error handling and is
-identified in the docked output and PLC status.
+The Close button and window close requests are blocked during the operation.
+Every terminal outcome enables closing, and the dialog stays open for review.
+BuildHost still runs plc-build followed by plc-upload after a successful build.
+Compiler output and diagnostics still go to the docked build output.
 
 Modified files
 - RetroPLC.BuildHost/FirmwareBuildService.cs
 - RetroPLC.BuildHost.Tests/Program.cs
-- RetroPLC.Shell/Views/MainWindow.axaml
+- RetroPLC.Shell/App.axaml.cs
 - RetroPLC.Shell/ViewModels/MainWindowViewModel.cs
 - RetroPLC.Shell/ViewModels/Docking/BuildViewModel.cs
-- README.md
+- RetroPLC.Shell/ViewModels/Docking/DockFactory.cs
+- RetroPLC.Shell/ViewModels/DownloadViewModel.cs
+- RetroPLC.Shell/Views/DownloadWindow.axaml
+- RetroPLC.Shell/Views/DownloadWindow.axaml.cs
 - codex_result.txt
 
 Validation
-- Complete solution build passed with 30 warnings and zero errors using
-  dotnet build RetroPLC.sln -m:1 -p:NuGetAudit=false. NuGet audit was disabled
-  for this run because api.nuget.org was inaccessible.
-- BuildHost simulated Pixi tests passed, including exact command arguments,
-  Rebuild progress, protocol and process errors, cancellation, process-tree
-  cleanup, and exclusion while another operation owns the BuildHost.
-- XAML and view-model smoke checks passed for toolbar order, tooltip, shared
-  binding, a single menu entry, Rebuild disabled during Build, and execution
-  and failure status after Build finished.
-- Live Verify, Build, Rebuild, and Clean passed on a temporary project copy
-  using the installed BuildEnvironment with ccache disabled for the run.
-  West reported making the existing build directory pristine during Rebuild.
+- Complete solution build passed using dotnet build RetroPLC.sln -m:1
+  -p:NuGetAudit=false. NuGet audit was disabled for offline validation.
+- BuildHost simulated Pixi tests passed for successful upload, already
+  installed, compilation failure, structured upload error, malformed and
+  missing results, unexpected exit, and nonzero exit after JSON success.
+- Shell integration smoke tests passed with simulated Pixi. They exercised
+  shared command bindings, duplicate prevention, indeterminate and measured
+  progress, zero or missing totals, activation, cancellation, startup
+  failure, dock diagnostics, and the close state before and after completion.
 - git diff --check passed.
 
 Remaining limitations
-- UI verification covered XAML and command execution. Interactive clicks could
-  not be exercised because a compatible display backend was unavailable.
-- Download was validated with simulated Pixi, without flashing a physical PLC.
+- Native title-bar and keyboard close gestures were not exercised because the
+  private display stalled during initialization. The Close binding and
+  modal command lifetime were checked in the shell smoke tests.
+- Firmware deployment was simulated without a physical PLC.

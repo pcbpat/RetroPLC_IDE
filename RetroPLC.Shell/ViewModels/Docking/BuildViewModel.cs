@@ -29,11 +29,12 @@ public sealed class BuildViewModel : Tool
     public string? OperationStatus { get; private set; }
     public Task ProcessCompletion { get; private set; } = Task.CompletedTask;
 
-    public async Task RunAsync(BuildOperation operation, string directory, ZephyrBuildConfiguration? project,
-        DeviceConnection? device, CancellationToken cancellationToken)
+    public async Task<BuildResult> RunAsync(BuildOperation operation, string directory,
+        ZephyrBuildConfiguration? project,
+        DeviceConnection? device, CancellationToken cancellationToken, Action<BuildEvent>? reportProgress = null)
     {
         if (_operation is not null)
-            return;
+            return new BuildResult(-1, "Another build operation is already running.");
 
         using var active = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _operation = active;
@@ -66,35 +67,44 @@ public sealed class BuildViewModel : Tool
             };
             if (line is not null)
                 Output.Add(line);
+            if (message.Kind == "progress")
+                reportProgress?.Invoke(message);
         });
 
-        BuildResult result;
         try
         {
-            var execution = _buildService.RunAsync(operation, directory, project, device, output, events, active.Token);
-            ProcessCompletion = execution;
-            result = await execution;
-        }
-        catch (OperationCanceledException) when (active.IsCancellationRequested)
-        {
-            result = new BuildResult(-1, "Operation cancelled.");
-        }
+            BuildResult result;
+            try
+            {
+                var execution = _buildService.RunAsync(operation, directory, project, device, output, events, active.Token);
+                ProcessCompletion = execution;
+                result = await execution;
+            }
+            catch (OperationCanceledException) when (active.IsCancellationRequested)
+            {
+                result = new BuildResult(-1, "Operation cancelled.");
+            }
 
-        OperationError = result.Error;
-        OperationStatus = result.Success ? result.Event?.Status switch
+            OperationError = result.Error;
+            OperationStatus = result.Success ? result.Event?.Status switch
+            {
+                "already_installed" => "Firmware already installed.",
+                "update_requested" => "Firmware update requested. Verify the running image after reboot.",
+                _ => $"{operation} succeeded."
+            } : null;
+            Output.Add(OperationStatus ?? (OperationError is { } error
+                ? $"{operation} failed: {error}"
+                : $"{operation} failed ({result.ExitCode})."));
+            OperationExited?.Invoke(operation, result.ExitCode);
+            return result;
+        }
+        finally
         {
-            "already_installed" => "Firmware already installed.",
-            "update_requested" => "Firmware update requested. Verify the running image after reboot.",
-            _ => $"{operation} succeeded."
-        } : null;
-        Output.Add(OperationStatus ?? (OperationError is { } error
-            ? $"{operation} failed: {error}"
-            : $"{operation} failed ({result.ExitCode})."));
-        _operation = null;
-        _activeOperation = null;
-        if (operation == BuildOperation.Download)
-            DownloadActivityChanged?.Invoke();
-        OperationExited?.Invoke(operation, result.ExitCode);
+            _operation = null;
+            _activeOperation = null;
+            if (operation == BuildOperation.Download)
+                DownloadActivityChanged?.Invoke();
+        }
     }
 
     public override bool OnClose()

@@ -1002,11 +1002,12 @@ public sealed class DockFactory : Factory
         ActivateWindow(tool);
     }
 
-    public async Task RunBuildToolAsync(BuildOperation operation)
+    public async Task<BuildResult> RunBuildToolAsync(BuildOperation operation,
+        Action<BuildEvent>? reportProgress = null)
     {
         if (_terminalDock is not { } dock || _buildTool is not { } tool ||
             _projectDirectory is not { } directory || _currentProject is not { } project)
-            return;
+            return new BuildResult(-1, "The project build workspace is unavailable.");
 
         var token = _buildShutdown.Token;
         if (dock.VisibleDockables?.Contains(tool) != true)
@@ -1014,7 +1015,7 @@ public sealed class DockFactory : Factory
 
         SetActiveDockable(tool);
         SetFocusedDockable(dock, tool);
-        await tool.RunAsync(operation, directory, project.Zephyr, project.Device, token);
+        return await tool.RunAsync(operation, directory, project.Zephyr, project.Device, token, reportProgress);
     }
 
     public void SaveAllDocuments()

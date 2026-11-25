@@ -87,13 +87,16 @@ try
                 ;;
               device-no-result) exit 0 ;;
               device-invalid) echo 'not json'; exit 0 ;;
+              device-terminated) exit 31 ;;
             esac
-            echo '{"event":"progress","step":"Uploading","transmitted":65536,"total":245760}'
             if [ "$mode" = installed ]; then
               echo '{"event":"result","success":true,"status":"already_installed"}'
             else
+              echo '{"event":"progress","step":"Uploading","transmitted":65536,"total":245760}'
+              echo '{"event":"progress","step":"Activating"}'
               echo '{"event":"result","success":true,"status":"update_requested"}'
             fi
+            if [ "$mode" = device-nonzero ]; then exit 29; fi
             ;;
           plc-verify)
             confirmed=false
@@ -158,18 +161,26 @@ try
     Mode("fail");
     Check((await Run(BuildOperation.Rebuild)).ExitCode == 23, "rebuild process failure");
     Mode("fail");
-    Check((await Run(BuildOperation.Download)).ExitCode == 23 && !File.ReadAllLines(calls).Contains("plc-upload"),
+    Check((await Run(BuildOperation.Download)).ExitCode == 23 && !File.ReadAllLines(calls).Contains("plc-upload") &&
+          events.All(e => e.Command != "plc-upload"),
         "failed build blocks upload even with existing firmware");
     Mode("installed");
-    Check((await Run(BuildOperation.Download)).Event?.Status == "already_installed" &&
-          events.Any(e => e is { Kind: "progress", Transmitted: 65536, Total: 245760 }), "upload progress and already installed");
+    Check((await Run(BuildOperation.Download)) is { Success: true, Event.Status: "already_installed" },
+        "already installed without transfer");
     Check(File.ReadAllLines(calls).SequenceEqual(new[]
     {
         "run", "--quiet", "west", "plc-build", project, "run", "--quiet", "west", "plc-upload", project,
         "--serial", device.SerialPort, "--baud", "230400", "--timeout-ms", "2500"
     }), "upload command order and options");
     Mode("ok");
-    Check((await Run(BuildOperation.Download)).Event?.Status == "update_requested", "upload request");
+    Check((await Run(BuildOperation.Download)) is { Success: true, Event.Status: "update_requested" },
+        "upload request");
+    Check(events.Where(e => e is { Kind: "progress", Command: "plc-upload" }).ToArray() is
+        [
+            { Step: "Preparing upload…", Transmitted: null, Total: null },
+            { Step: "Uploading", Transmitted: 65536, Total: 245760 },
+            { Step: "Activating", Transmitted: null, Total: null }
+        ], "upload progress sequence");
     var verification = await service.VerifyFirmwareAsync(project, device);
     Check(verification.Success && verification.Event is { Verified: true, Hash: "abc123", Version: "1.0.0", Confirmed: false }
           && !File.ReadAllLines(calls).Contains("--confirm"), "verify without implicit confirmation");
@@ -178,13 +189,16 @@ try
     Mode("device-error");
     var error = await Run(BuildOperation.Download);
     Check(error is { ExitCode: 17, Error: "Device did not respond", Event.Code: "device_error" }, "structured error");
-    foreach (var mode in new[] { "device-no-result", "device-invalid", "invalid", "no-result", "empty", "bad-map" })
+    foreach (var mode in new[] { "device-no-result", "device-invalid", "device-terminated", "invalid", "no-result", "empty", "bad-map" })
     {
         Mode(mode);
         Check(!(await Run(BuildOperation.Download)).Success, mode);
     }
     Mode("nonzero");
     Check((await Run(BuildOperation.Build)).ExitCode == 29, "nonzero overrides JSON success");
+    Mode("device-nonzero");
+    Check((await Run(BuildOperation.Download)) is { ExitCode: 29, Event.Success: true },
+        "nonzero upload overrides JSON success");
 
     var childFile = Path.Combine(installation, "child");
     foreach (var operation in new[] { BuildOperation.Download, BuildOperation.Rebuild })

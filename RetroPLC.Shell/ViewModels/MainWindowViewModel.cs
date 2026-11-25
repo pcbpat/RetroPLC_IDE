@@ -59,6 +59,8 @@ public partial class MainWindowViewModel : ViewModelBase
     public IRelayCommand CleanCommand { get; }
     public IRelayCommand DownloadCommand { get; }
 
+    public event Func<DownloadViewModel, Task>? DownloadDialogRequested;
+
     public string PlcStatus
     {
         get => _plcStatus;
@@ -359,11 +361,14 @@ public partial class MainWindowViewModel : ViewModelBase
     private Task BuildAsync() => StartBuildOperationAsync(BuildOperation.Build, "building…");
     private Task RebuildAsync() => StartBuildOperationAsync(BuildOperation.Rebuild, "Rebuilding…");
     private Task CleanAsync() => StartBuildOperationAsync(BuildOperation.Clean, "cleaning…");
-    private Task DownloadAsync() => StartBuildOperationAsync(BuildOperation.Download, "downloading…");
+    private Task DownloadAsync() => _isRunning
+        ? Task.CompletedTask
+        : StartBuildOperationAsync(BuildOperation.Download, "downloading…", new DownloadViewModel());
 
     private bool CanStartBuildOperation() => _isProjectOpen && !_isPreparingBuild && !_factory.IsDownloadActive;
 
-    private async Task StartBuildOperationAsync(BuildOperation operation, string status)
+    private async Task StartBuildOperationAsync(BuildOperation operation, string status,
+        DownloadViewModel? download = null)
     {
         if (!CanStartBuildOperation())
             return;
@@ -372,16 +377,34 @@ public partial class MainWindowViewModel : ViewModelBase
         RefreshPlcCommands();
         try
         {
-            if (operation != BuildOperation.Verify)
-                await GoOfflineAsync();
+            Task? dialog = null;
+            BuildResult result;
+            try
+            {
+                if (download is not null)
+                    dialog = DownloadDialogRequested?.Invoke(download);
 
-            PlcStatus = status;
-            _factory.SaveAllDocuments();
-            await _factory.RunBuildToolAsync(operation);
-        }
-        catch (Exception exception)
-        {
-            PlcStatus = $"{GetBuildOperationName(operation)} failed: {exception.Message}";
+                if (operation != BuildOperation.Verify)
+                    await GoOfflineAsync();
+
+                PlcStatus = status;
+                _factory.SaveAllDocuments();
+                result = await _factory.RunBuildToolAsync(operation, download is null ? null : download.ReportProgress);
+            }
+            catch (OperationCanceledException)
+            {
+                result = new BuildResult(-1, "Operation cancelled.");
+            }
+            catch (Exception exception)
+            {
+                result = new BuildResult(-1, exception.Message);
+            }
+
+            if (!result.Success)
+                PlcStatus = $"{GetBuildOperationName(operation)} failed: {result.Error}";
+            download?.Complete(result);
+            if (dialog is not null)
+                await dialog;
         }
         finally
         {
