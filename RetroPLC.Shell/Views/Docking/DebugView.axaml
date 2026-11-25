@@ -1,0 +1,41 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RetroPLC.Shell.ViewModels.Docking"
+             xmlns:common="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia"
+             x:Class="RetroPLC.Shell.Views.Docking.DebugView"
+             x:DataType="vm:DebugViewModel">
+    <UserControl.Styles>
+        <Style Selector="ListBoxItem">
+            <Setter Property="MinHeight" Value="21"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        </Style>
+        <Style Selector="TextBlock.cell">
+            <Setter Property="Margin" Value="4,2"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+        </Style>
+    </UserControl.Styles>
+    <Grid RowDefinitions="Auto,*">
+        <Border Background="{DynamicResource {x:Static common:SystemColors.ControlBrushKey}}"
+                BorderBrush="{DynamicResource {x:Static common:SystemColors.ControlDarkBrushKey}}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="3*,2*">
+                <TextBlock Classes="cell" FontWeight="SemiBold" Text="Parameter"/>
+                <TextBlock Grid.Column="1" Classes="cell" FontWeight="SemiBold" Text="Value"/>
+            </Grid>
+        </Border>
+        <ListBox Grid.Row="1" ItemsSource="{Binding Variables}" BorderThickness="0" Padding="0"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:DebugVariableViewModel">
+                    <Grid ColumnDefinitions="3*,2*">
+                        <TextBlock Classes="cell" Text="{Binding Parameter}" ToolTip.Tip="{Binding Parameter}"/>
+                        <TextBlock Grid.Column="1" Classes="cell" Text="{Binding Value}" ToolTip.Tip="{Binding Value}"/>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </Grid>
+</UserControl>
