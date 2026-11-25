@@ -18,6 +18,7 @@ public sealed class ProjectDocument
     public string Name { get; set; } = string.Empty;
     public string Template { get; set; } = "EmptyProject";
     public ZephyrBuildConfiguration? Zephyr { get; set; }
+    public DeviceConnection? Device { get; set; }
     public List<ProjectNodeDefinition> Tree { get; set; } = [];
 }
 

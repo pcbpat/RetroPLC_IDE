@@ -70,7 +70,7 @@ On Linux/macOS:
 
 The setup script initializes the icon and STruC++ submodules and provisions the
 IDE's Node.js, STruC++ compiler, libraries, language server and mcumgrctl under
-`tools`. Set up AC6 and Zephyr separately using the steps below.
+`tools`. Firmware builds use a separately installed RetroPLC_BuildEnvironment.
 
 Restore and build the IDE:
 
@@ -94,98 +94,70 @@ dotnet run --project RetroPLC.Shell/RetroPLC.Shell.csproj
 - `RetroPLC.Theme` — shared Avalonia theme and controls.
 - `tools/strucpp` — pinned STruC++ source submodule used directly by the setup process.
 - `tools` — setup-managed Node.js, STruC++ and mcumgrctl.
-- `.zinstaller` — AC6-managed Zephyr host tools and Python virtual environment.
 
 `tools/strucpp` is the canonical STruC++ source checkout. `setup.sh` builds
 the compiler, libraries and language server directly in that submodule. The Structured Text editor uses the TextMate grammar at
 `RetroPLC.Shell/Assets/Syntax/st.tmLanguage.json`.
 
-## Zephyr host tools and firmware configuration
+## Firmware build environment
 
-Install AC6 hosttools into `.zinstaller` at the solution root for development.
-For a published application, install hosttools into `.zinstaller` next to the
-application. A published installation needs AC6 files generated for its actual
-location because the AC6 manifest and venv can contain absolute paths. Use
-`RETROPLC_AC6_DIRECTORY` to select an existing installation elsewhere.
+Use an installed RetroPLC_BuildEnvironment workspace. Set
+`RETROPLC_BUILD_ENVIRONMENT` to its root, or place the workspace in
+`RetroPLC_BuildEnvironment` next to the IDE executable. Pixi is resolved from
+`PATH` by default. Set `RETROPLC_PIXI_EXECUTABLE` to override it. Relative
+environment paths are resolved against the IDE process's working directory.
+The IDE uses the existing locked Pixi environment.
 
-Run `setup.sh` to provision the Runtime workspace and its SDK and install
-the Zephyr backend's Python dependencies into `.zinstaller/.venv`. The IDE
-starts the local backend when it first needs west workspace or manifest
-metadata and stops it at shutdown. Zephyr checks the configured board and SDK
-compatibility during CMake configuration. The backend always uses Python from the
-installation's `.zinstaller/.venv`. The IDE builds
-the central application at `.zephyr/workspace/retroplc-runtime/app`, using
-the workspace at `.zephyr/workspace`, the SDK directly in `.zephyr/sdk`, and
-the `arduino_opta/stm32h747xx/m7` board. These paths are relative to the
-application root. On Linux, the IDE uses AppImage extract-and-run mode when
-AC6 Python is an AppImage and the FUSE device is unavailable. Set
-`APPIMAGE_EXTRACT_AND_RUN=1` if the device is present but the mount still fails.
+BuildHost runs `pixi run --quiet west <command> <absolute-project-path>` from
+the BuildEnvironment root. The interactive terminal opens a Pixi shell there.
 
-A `zephyr` object in
-the project's `project.json` can contain:
+| IDE action | West command |
+| --- | --- |
+| Verify | `plc-transpile` |
+| Build / Rebuild | `plc-build` |
+| Clean | `plc-clean` |
+| Download | `plc-build`, then `plc-upload` after a successful build and artifact validation |
+
+Download uses the project's `device` object in `project.json`. For example:
 
 ```json
 {
-  "zephyr": {
-    "workspaceDirectory": "../my-west-workspace",
-    "useSysbuild": true,
-    "pristineMode": "auto",
-    "cMakeOptions": {
-      "CMAKE_VERBOSE_MAKEFILE": "ON"
-    }
+  "device": {
+    "serialPort": "/dev/ttyACM0",
+    "baudRate": 115200,
+    "timeoutMilliseconds": 10000
   }
 }
 ```
 
-Set `boardTarget` to the Zephyr target, including any qualifiers. The IDE
-passes it unchanged to west. Set `sdkDirectory` to override the provisioned SDK. Other
-optional fields are `applicationDirectory`, `buildDirectory` and
-`hostToolsDirectory`. The default build directory is below `Build/Zephyr` in
-the project. Clean removes the project's `Build` tree.
+Set the serial port explicitly. UDP configuration uses `udpHostname` and
+`udpPort` (default 1337) and requires firmware with SMP over UDP support.
+`FirmwareBuildService.VerifyFirmwareAsync` invokes `plc-verify`. Pass
+`confirm: true` only when explicitly requesting firmware confirmation.
+`already_installed` means the matching image is active. `update_requested`
+means the update has started and the running image still needs verification.
 
-BuildHost invokes `tools/generate-strucpp-debug.mjs` with managed Node.js.
-The helper compiles once using the STruC++ API and writes `generated.hpp`,
-the translation units, `generated_debug.cpp`, and `debug_map.json` under
-`Build/Generated`. A successful Zephyr build publishes the debug map with its
-firmware in `Build/Artifacts`. Verify only changes the generated source set.
+Build and Rebuild both use the pristine build from BuildEnvironment. Generated
+sources and the validated debug map live in `Build/Generated`. The ELF, signed
+BIN and HEX, and linker map live in `Build/Zephyr/app/zephyr`. Clean removes
+`Build/Generated` and `Build/Zephyr`. Older `Build/Artifacts` directories may
+still exist on disk.
 
-Setup applies `tools/retroplc-runtime-debug.patch` to its Runtime checkout. It
-gives the scan cycle and the debug pointer table one shared PLC configuration.
-Apply the same patch to a compatible custom Runtime checkout before building
-with it. Firmware monitoring over SMP is a separate integration.
+The installed commands target `arduino_opta/stm32h747xx/m7` using sysbuild.
+BuildHost reports unsupported project `zephyr` overrides and legacy
+`RETROPLC_AC6_DIRECTORY` / `RETROPLC_ZEPHYR_*` overrides when compiling
+firmware. BuildEnvironment needs to expose custom board, workspace, SDK,
+application, build-directory and CMake settings to support those overrides.
+It also needs to pass the project `Libraries` directory to its transpiler
+before library-bearing projects can build. The IDE reports this limitation
+when it finds a project `.stlib` file. Use a project path without spaces for
+firmware compilation with the tested BuildEnvironment revision. Its generated
+Zephyr compiler command passes an unquoted project path to `-imacros`.
 
-Settings apply in this order, from highest to lowest precedence.
-
-1. Explicit per-operation BuildHost overrides.
-2. The project's `zephyr` settings.
-3. IDE defaults, including `ZephyrConfiguration` defaults supplied by the
-   caller and the environment variables below.
-
-Project and operation paths are relative to the current project's directory.
-IDE paths are relative to the application root. CMake options merge by key.
-Rebuild always uses a pristine build.
-
-| IDE variable | Purpose |
-| --- | --- |
-| `RETROPLC_AC6_DIRECTORY` | Existing AC6 hosttools installation |
-| `RETROPLC_ZEPHYR_WORKSPACE` | West workspace directory |
-| `RETROPLC_ZEPHYR_APPLICATION` | Zephyr application directory |
-| `RETROPLC_ZEPHYR_SDK` | Explicit override for the provisioned SDK |
-| `RETROPLC_ZEPHYR_BOARD` | Board target override |
-
-The terminal and BuildHost use the west supplied by AC6. Select hosttools with
-`RETROPLC_AC6_DIRECTORY`. Set `RETROPLC_TOOLS_DIRECTORY` to override the
-application-managed `tools` directory. Relative overrides start at the
-application root.
-
-`GetBoardService` exposes discovery and validation for workspace board targets.
-The IDE validates the provisioned environment before building. Rebuild uses
-a pristine build, and automatic mode rebuilds when the cached SDK location or
-version changes.
-
-Run the BuildHost checks with `dotnet run --project RetroPLC.BuildHost.Tests`.
-The Linux tests use isolated fixtures for hosttools, west and the ST and
-firmware stages.
+Run the simulated checks with
+`dotnet run --project RetroPLC.BuildHost.Tests`. With a configured
+BuildEnvironment, append `-- --live /path/to/a/disposable/project-copy` to
+exercise Verify, Build and Clean without accessing a device.
 
 ## Updating STruC++
 

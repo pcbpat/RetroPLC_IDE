@@ -1,62 +1,66 @@
-RetroPLC native STruC++ compilation and debug artifacts
+RetroPLC BuildHost migration to RetroPLC_BuildEnvironment
 
-Files
-  Updated the supplied tools/generate-strucpp-debug.mjs.
-  Added tools/retroplc-runtime-debug.patch.
-  Modified RetroPLC.BuildHost/FirmwareBuildService.cs.
-  Modified RetroPLC.LanguageServerHost/StrucppToolchain.cs.
-  Modified RetroPLC.BuildHost.Tests/Program.cs.
-  Modified RetroPLC.Shell/RetroPLC.Shell.csproj, setup.sh, and README.md.
-  Overwrote codex_result.txt.
-  Applied the patch to app/src/main.cpp and app/CMakeLists.txt in the
-  installed RetroPLC Runtime checkout. The patch is stored in the IDE repo.
+Implementation
+- BuildHost resolves and validates an installed Pixi workspace, then runs its West commands from that workspace. Standard output carries JSON progress, results and errors. Standard error carries compiler output and diagnostics.
+- The async process runner preserves process exit codes, uses ArgumentList, drains both streams and terminates the process tree on cancellation. Startup failures, malformed JSON and missing results are reported to the Build pane.
+- Download requires a successful build and validated artifacts before starting upload. Device verification is available through VerifyFirmwareAsync, with confirmation as an explicit opt-in. An already-installed image and an update request are both successful outcomes. Only the former establishes that the matching image was already active.
+- Generated output is validated in Build/Generated. Firmware artifacts are validated in Build/Zephyr/app/zephyr. New builds do not publish copies to Build/Artifacts.
+- The existing dock shows live output on the Avalonia UI thread and preserves operation completion notifications. The interactive terminal opens a PTY-backed Pixi shell. Library import keeps its separate terminal behavior.
+- The pre-existing debug monitor prefers Build/Generated/debug_map.json and falls back to its legacy map when the canonical map is absent. The debug monitor still uses its existing standalone mcumgrctl. Firmware operations have no standalone mcumgrctl dependency.
 
-Compilation
-  BuildHost uses one managed Node invocation and one STruC++ compile() call
-  for Build, Rebuild, Verify, and Download preparation. The helper uses
-  native ST/IL discovery, including nested sources and excluding ProjectFiles/Tests.
-  The helper loads explicit project .stlib directories with discoverStlibs().
-  The IDE still requests no default bundled libraries. A deterministic MD5 of
-  the sources, loaded libraries, and compiler package version populates the map.
-  It stages the complete output set before replacing Build/Generated.
-  Successful replacement removes obsolete translation units and old headers.
-  Compilation and library failures preserve the previous generated set.
+Configuration
+- RETROPLC_BUILD_ENVIRONMENT selects the installed workspace root. The default is RetroPLC_BuildEnvironment beside the application. The workspace must contain pixi.toml and pixi.lock.
+- RETROPLC_PIXI_EXECUTABLE optionally selects Pixi by path or name. Otherwise Pixi resolves from PATH. Relative paths resolve from the IDE process working directory.
+- Machine commands run with PIXI_NO_INSTALL and PIXI_LOCKED. The interactive terminal uses pixi shell --no-install --locked.
+- Configure device.serialPort in the project's project.json. Optional settings are device.baudRate (115200) and device.timeoutMilliseconds (10000). Alternatively, device.udpHostname and device.udpPort (1337) select UDP for compatible Runtime firmware. No device is selected automatically.
 
-Outputs and Runtime
-  Build/Generated contains generated.hpp, native named C++ units,
-  generated_debug.cpp, and the native v2 debug_map.json.
-  The Runtime already globs generated C++ files. Its scan loop and pointer
-  table now share one global g_config. A compile-time declaration checks the
-  configuration class and Zephyr linker options retain the table symbols.
-  BuildHost validates the map before starting west and checks it again before
-  publishing. It stages the firmware and map together under Build/Artifacts.
-  Failed or cancelled builds preserve the last successful published pair.
-  Verify updates generated files only. Download still uses mcumgr after
-  a successful build. Setup applies the Runtime patch idempotently and checks
-  that the compiled Node API exists. No STruC++ or west backend files changed.
+Command mapping
+All machine commands use pixi run --quiet west and an absolute project path.
+- Verify => plc-transpile
+- Build / Rebuild => plc-build
+- Clean => plc-clean
+- Download => plc-build, then plc-upload with the configured transport
+- Firmware verification => plc-verify with the configured transport and optional --confirm
 
-Verification
-  PASS  dotnet build RetroPLC.sln --no-restore -m:1
-  PASS  dotnet test RetroPLC.sln --no-build -m:1 (solution VSTest target)
-  PASS  dotnet run --project RetroPLC.BuildHost.Tests --no-build
-        The console runner exercised actual managed Node compilation, nested
-        sources, project archives, bad source/archive failures, native module
-        and Node diagnostics, process cancellation, stale cleanup, map
-        validation/publication, verify, and download preparation.
-  PASS  Managed Node.js v22.23.2 direct helper run. TestProj emitted
-        configuration.cpp, pou_MAIN.cpp, generated.hpp, generated_debug.cpp,
-        and a v2 debug map with arrays, leaves, MD5, and 10 debug symbols.
-  PASS  Live Opta build, clean, and pristine rebuild using the installed
-        arduino_opta/stm32h747xx/m7 target, sysbuild, MCUboot, and Zephyr SDK.
-        The published debug_map.json matched the generated file byte for byte.
-        ARM nm confirmed g_config, debug_arrays, debug_array_counts and
-        debug_array_count in the final ELF. Signed BIN and HEX were produced.
-        Live artifacts and log are under /tmp/retroplc-native-live.aykJQyeX.
-  PASS  Node syntax, bash syntax, diff checks, and Runtime patch forward and
-        reverse application checks. The full bootstrap was not rerun.
+Added or modified
+- RetroPLC.BuildHost/Environment/BuildEnvironment.cs (new)
+- RetroPLC.BuildHost/FirmwareBuildService.cs
+- RetroPLC.BuildHost/ZephyrConfiguration.cs (legacy manifest fields and override detection)
+- RetroPLC.BuildHost/RetroPLC.BuildHost.csproj
+- RetroPLC.BuildHost/Debugging/DebugMap.cs (pre-existing local debug monitor)
+- RetroPLC.BuildHost.Tests/Program.cs
+- RetroPLC.BuildHost.Tests/DebugMonitorTests.cs (pre-existing local test)
+- RetroPLC.Shell/Models/ProjectDocument.cs
+- RetroPLC.Shell/RetroPLC.Shell.csproj
+- RetroPLC.Shell/ViewModels/Docking/BuildTerminalSession.cs (existing library-import type moved to its own file)
+- RetroPLC.Shell/ViewModels/Docking/BuildViewModel.cs
+- RetroPLC.Shell/ViewModels/Docking/DockFactory.cs
+- RetroPLC.Shell/ViewModels/Docking/TerminalViewModel.cs
+- RetroPLC.Shell/ViewModels/MainWindowViewModel.cs
+- RetroPLC.Shell/Views/Docking/BuildView.axaml and BuildView.axaml.cs
+- setup.sh, README.md, codex_result.txt
 
-Limitations
-  Physical flashing and runtime variable monitoring were not exercised.
-  The MD5 is recorded in the debug map. Firmware does not yet report it
-  through SMP. A custom Runtime checkout needs compatible debug integration.
-  Existing Avalonia analyzer warnings appeared on a full compilation.
+Removed
+- RetroPLC.BuildHost/Environment/Ac6Environment.cs
+- RetroPLC.BuildHost/ZephyrBoardService.cs and ZephyrSdkService.cs
+- RetroPLC.BuildHost/ZephyrBackend/ZephyrBackendClient.cs and ZephyrBackendProcess.cs
+- tools/zephyr-backend/ (README, requirements, package, tests and proto)
+- BuildHost gRPC dependencies Grpc.Net.Client, Grpc.Tools and Google.Protobuf, and shell publish entries for the Python backend.
+- IDE setup no longer activates AC6, provisions Zephyr or the SDK, or installs the Python Zephyr backend. IDE-local STruC++ and Node.js remain available for the language server and library tools.
+
+Compatibility and remaining limitations
+- The installed plc-transpile does not pass project Libraries to its compiler helper. Verify and firmware builds report the limitation when Libraries contains .stlib files. BuildEnvironment needs to pass the project library directory.
+- The installed plc-build fixes its board, workspace, SDK, Runtime application, build paths, sysbuild and pristine policy. Unsupported legacy build overrides are reported. BuildEnvironment would need to expose the corresponding settings before the IDE can forward them.
+- BuildEnvironment's Zephyr-generated compiler invocation needs quoting fixes for spaces in project paths. C# and Pixi preserve the path correctly, and live transpilation succeeded with spaces. Firmware compilation needs a space-free path with the tested revision.
+- Clean delegates to West, which removes Build/Generated and Build/Zephyr. Old Build/Artifacts directories can remain.
+- Firmware verification and explicit confirmation are available through the BuildHost API. The existing IDE Verify action remains a source transpilation action.
+- Physical upload, reboot, confirmation, UDP transport and interactive GUI behavior were not exercised live. No external repository was changed. No commits or pushes were made.
+
+Build and test results
+- .NET SDK 10.0.201. Full solution build with dotnet build RetroPLC.sln -m:1 --no-restore succeeded with 0 errors and 28 existing shell analyzer warnings. BuildHost warnings-as-errors remains enabled.
+- dotnet run --no-build --project RetroPLC.BuildHost.Tests passed. The simulator covers argument boundaries and working directory, missing workspace/Pixi, startup failure, successful and failed compilation, clean, upload gating, progress, upload outcomes, firmware verification and explicit confirmation, errors, malformed and missing JSON, nonzero exit codes, cancellation/process-tree termination and artifact validation. Existing debug monitor tests also passed.
+- bash -n setup.sh and git diff --check passed.
+
+Live integration
+- Tested the installed /home/patrick/RetroPLC_BuildEnvironment_Test workspace at e81c09e with disposable copies of TestProj sources. Verify, Build and Clean passed on a space-free path. Build validated generated_debug.cpp, debug_map.json and all four canonical Zephyr artifacts. Clean removed the canonical generated directories.
+- Set CCACHE_DISABLE=1 for the live retry because the sandbox blocks writes to the installation's cache. In the whitespace-path run, Verify passed and Zephyr compilation failed at GCC on the generated unquoted -imacros path. No physical device commands were executed.

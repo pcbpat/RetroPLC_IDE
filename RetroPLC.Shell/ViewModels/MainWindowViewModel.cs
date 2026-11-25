@@ -28,6 +28,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private bool _isProjectOpen;
     private bool _isLoadingProject;
     private bool _isPreparingBuild;
+    private bool _isDisconnecting;
     private string _plcStatus = string.Empty;
 
     public IRootDock? Layout
@@ -109,11 +110,13 @@ public partial class MainWindowViewModel : ViewModelBase
             // Let the Welcome panel paint the progress bar before the blocking
             // workspace load (tree migration, dock layout, language server).
             await Dispatcher.Yield(DispatcherPriority.Background);
+            await GoOfflineAsync();
             OpenProjectCore(project);
         }
         finally
         {
             IsLoadingProject = false;
+            RefreshPlcCommands();
         }
     }
 
@@ -130,12 +133,14 @@ public partial class MainWindowViewModel : ViewModelBase
             await Dispatcher.Yield(DispatcherPriority.Background);
             var tree = CreateDefaultProjectTree(name);
             var project = ProjectStore.Create(location, name, template, tree);
+            await GoOfflineAsync();
             OpenProjectCore(project);
             return project;
         }
         finally
         {
             IsLoadingProject = false;
+            RefreshPlcCommands();
         }
     }
 
@@ -158,7 +163,7 @@ public partial class MainWindowViewModel : ViewModelBase
     public MainWindowViewModel()
     {
         _factory = new DockFactory();
-        ResetLayoutCommand = new RelayCommand(CreateLayout);
+        ResetLayoutCommand = new AsyncRelayCommand(ResetLayoutAsync);
         SaveActiveDocumentCommand = new RelayCommand(_factory.SaveActiveDocument);
         SaveAllDocumentsCommand = new RelayCommand(_factory.SaveAllDocuments);
         RenameSymbolCommand = new RelayCommand(
@@ -175,8 +180,8 @@ public partial class MainWindowViewModel : ViewModelBase
             () => _isProjectOpen);
         CloseAllDocumentsCommand = new RelayCommand(_factory.CloseAllDocuments);
         OpenTerminalCommand = new AsyncRelayCommand(_factory.OpenTerminalAsync);
-        GoOnlineCommand = new RelayCommand(GoOnline, () => !_isOnline);
-        GoOfflineCommand = new RelayCommand(GoOffline, () => _isOnline);
+        GoOnlineCommand = new RelayCommand(GoOnline, CanGoOnline);
+        GoOfflineCommand = new AsyncRelayCommand(GoOfflineAsync, () => _factory.DebugTool?.IsMonitoring == true);
         LoginCommand = new RelayCommand(Login, () => _isOnline && !_isLoggedIn);
         LogoutCommand = new RelayCommand(Logout, () => _isLoggedIn);
         RunCommand = new RelayCommand(Run, () => _isLoggedIn && !_isRunning);
@@ -188,6 +193,7 @@ public partial class MainWindowViewModel : ViewModelBase
         CleanCommand = new AsyncRelayCommand(CleanAsync, () => _isProjectOpen);
         DownloadCommand = new AsyncRelayCommand(DownloadAsync, () => _isProjectOpen && !_isRunning);
         _factory.BuildOperationExited += OnBuildOperationExited;
+        _factory.DownloadActivityChanged += RefreshPlcCommands;
         ApplyTheme();
         ApplyTextSize();
     }
@@ -250,17 +256,71 @@ public partial class MainWindowViewModel : ViewModelBase
             : ThemeVariants.Light;
     }
 
+    private bool CanGoOnline() =>
+        !_isDisconnecting && !_isLoadingProject && !_isPreparingBuild &&
+        !_factory.IsDownloadActive && _factory.DebugTool?.IsMonitoring != true;
+
     private void GoOnline()
     {
-        _isOnline = true;
+        if (!CanGoOnline())
+            return;
+
+        if (_factory.ProjectDirectory is not { } directory || _factory.DebugTool is not { } debug)
+        {
+            PlcStatus = "Open a PLC project before going online.";
+            return;
+        }
+
+        _factory.ShowDebugTool();
+        PlcStatus = "Connecting to PLC…";
+        debug.Start(directory,
+            connected: () =>
+            {
+                _isOnline = true;
+                PlcStatus = "Debug monitor online";
+                RefreshPlcCommands();
+            },
+            disconnected: error =>
+            {
+                SetOfflineState($"Debug monitor offline. {error}");
+            });
         RefreshPlcCommands();
     }
 
-    private void GoOffline()
+    private async Task GoOfflineAsync()
+    {
+        if (_factory.DebugTool is not { } debug)
+            return;
+
+        _isDisconnecting = true;
+        var wasMonitoring = debug.IsMonitoring;
+        var stopped = debug.StopAsync();
+        if (wasMonitoring)
+            SetOfflineState("Debug monitor offline");
+        try
+        {
+            await stopped;
+        }
+        finally
+        {
+            _isDisconnecting = false;
+            RefreshPlcCommands();
+        }
+    }
+
+    private void SetOfflineState(string status)
     {
         _isRunning = false;
         _isLoggedIn = false;
         _isOnline = false;
+        PlcStatus = status;
+        RefreshPlcCommands();
+    }
+
+    private async Task ResetLayoutAsync()
+    {
+        await GoOfflineAsync();
+        CreateLayout();
         RefreshPlcCommands();
     }
 
@@ -303,13 +363,17 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private async Task StartBuildOperationAsync(BuildOperation operation, string status)
     {
-        if (_isPreparingBuild)
+        if (_isPreparingBuild || _factory.IsDownloadActive)
             return;
 
         _isPreparingBuild = true;
-        PlcStatus = status;
+        RefreshPlcCommands();
         try
         {
+            if (operation != BuildOperation.Verify)
+                await GoOfflineAsync();
+
+            PlcStatus = status;
             _factory.SaveAllDocuments();
             await _factory.RunBuildToolAsync(operation);
         }
@@ -320,16 +384,18 @@ public partial class MainWindowViewModel : ViewModelBase
         finally
         {
             _isPreparingBuild = false;
+            RefreshPlcCommands();
         }
     }
 
     private void OnBuildOperationExited(BuildOperation operation, int exitCode)
     {
         var action = GetBuildOperationName(operation);
-        var result = exitCode == 0 ? $"{action} succeeded" :
+        var result = exitCode == 0 ? _factory.BuildOperationStatus ?? $"{action} succeeded" :
             _factory.BuildOperationError is { } error ? $"{action} failed: {error}" :
             $"{action} failed ({exitCode}). See the Build output.";
         PlcStatus = result;
+        RefreshPlcCommands();
     }
 
     private static string GetBuildOperationName(BuildOperation operation) =>

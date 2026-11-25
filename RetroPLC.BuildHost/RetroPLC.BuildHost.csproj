@@ -9,10 +9,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Grpc.Net.Client" Version="2.71.0" />
-    <PackageReference Include="Google.Protobuf" Version="3.31.1" />
-    <PackageReference Include="Grpc.Tools" Version="2.71.0" PrivateAssets="All" />
-    <Protobuf Include="../tools/zephyr-backend/zephyr_environment.proto" GrpcServices="Client" />
     <ProjectReference Include="..\RetroPLC.LanguageServerHost\RetroPLC.LanguageServerHost.csproj" />
   </ItemGroup>
 </Project>

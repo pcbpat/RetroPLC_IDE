@@ -2,6 +2,12 @@
   "formatVersion": 1,
   "name": "TestProj",
   "template": "EmptyProject",
+  "device": {
+    "serialPort": "/dev/ttyACM0",
+    "baudRate": 115200,
+    "timeoutMilliseconds": 10000,
+    "udpPort": 1337
+  },
   "tree": [
     {
       "name": "TestProj",

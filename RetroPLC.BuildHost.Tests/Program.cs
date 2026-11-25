@@ -1,583 +1,242 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 using System.Diagnostics;
-using System.Text.Json;
 using RetroPLC.BuildHost;
-using RetroPLC.LanguageServerHost;
 
-if (!OperatingSystem.IsLinux())
-{
-    Console.WriteLine("The AC6 process fixture requires Linux.");
-    return 0;
-}
+await DebugMonitorTests.RunAsync();
+if (args is ["--debug-monitor"])
+    return;
 
 if (args is ["--live", var liveProject])
 {
-    await using var live = new FirmwareBuildService();
-    var projectPath = Path.GetFullPath(liveProject);
-    var settings = await live.Configuration.ResolveAsync(projectPath);
-    var metadata = await live.Configuration.GetWorkspaceInfoAsync(settings.WorkspaceDirectory!);
-    var projects = await live.Configuration.GetProjectsAsync(metadata.Directory, ["zephyr"]);
-    var configInfo = await live.Configuration.GetWestConfigAsync(metadata.Directory, ["manifest.path"]);
-    Check(metadata.ZephyrCloned && projects.Single().Directory == metadata.ZephyrDirectory &&
-          configInfo.Values["manifest.path"] is not null, "live workspace and Zephyr project metadata");
-    Console.WriteLine($"west manifest {metadata.ManifestFile}, Zephyr checkout {metadata.ZephyrDirectory}.");
-
-    await RunSessionAsync(await live.StartBuildAsync(projectPath, "Test"));
-    await RunSessionAsync(await live.StartCleanAsync(projectPath));
-    Check(!Directory.Exists(Path.Combine(projectPath, "Build")), "live clean removed build output");
-    await RunSessionAsync(await live.StartRebuildAsync(projectPath, "Test"));
-    Check(File.Exists(Path.Combine(projectPath, "Build", "Artifacts", "firmware.bin")), "live rebuild published firmware");
-    CheckDebugMap(Path.Combine(projectPath, "Build", "Artifacts", "debug_map.json"));
-
-    var missing = await ExpectAsync<DirectoryNotFoundException>(() => live.StartBuildAsync(projectPath, "Test",
-        overrides: new() { SdkDirectory = "missing-sdk" }));
-    Check(missing.Message.Contains("missing-sdk"), "live missing SDK path diagnostic");
-    Console.WriteLine(missing.Message);
-
-    Directory.CreateDirectory(Path.Combine(projectPath, "empty-sdk"));
-    var incompatible = await live.StartBuildAsync(projectPath, "Test",
-        overrides: new() { SdkDirectory = "empty-sdk", BuildDirectory = "sdk-error-build" });
-    var source = await RunAsync(incompatible.InitialProcess);
-    Check(source.ExitCode == 0, "live SDK failure reached Zephyr after ST compilation");
-    var failedSdkBuild = await RunAsync(incompatible.ProcessExited(source.ExitCode).NextProcess!, timeoutSeconds: 60);
-    Console.Error.WriteLine(failedSdkBuild.Error);
-    Check(failedSdkBuild.ExitCode != 0 && failedSdkBuild.Error.Contains("Zephyr-sdk", StringComparison.OrdinalIgnoreCase),
-        "CMake rejected the incomplete SDK");
-    return 0;
+    var live = new FirmwareBuildService();
+    foreach (var operation in new[] { BuildOperation.Verify, BuildOperation.Build, BuildOperation.Clean })
+    {
+        var result = await live.RunAsync(operation, liveProject, output: new InlineProgress<string>(Console.WriteLine));
+        Check(result.Success, $"{operation}: {result.Error}");
+        Console.WriteLine($"{operation} passed.");
+    }
+    return;
 }
 
-Trace.Listeners.Add(new ConsoleTraceListener(useErrorStream: true));
-var root = Directory.CreateTempSubdirectory("retroplc-buildhost-").FullName;
+if (!OperatingSystem.IsLinux())
+{
+    Console.WriteLine("The simulated Pixi executable requires Linux.");
+    return;
+}
+
+var root = Directory.CreateTempSubdirectory("retroplc pixi tests ").FullName;
 try
 {
-    var development = new RetroPlcInstallation();
-    Check(File.Exists(Path.Combine(development.ApplicationDirectory, "RetroPLC.sln")),
-        "development root from application directory");
-    var project = Directory.CreateDirectory(Path.Combine(root, "project with spaces")).FullName;
-    var workspace = Directory.CreateDirectory(Path.Combine(root, ".zephyr", "workspace")).FullName;
-    Directory.CreateDirectory(Path.Combine(workspace, ".west"));
-    File.WriteAllText(Path.Combine(workspace, ".west", "config"), "[manifest]\npath = retroplc-runtime\n");
-    var manifest = Path.Combine(workspace, "retroplc-runtime", "west.yml");
-    Directory.CreateDirectory(Path.GetDirectoryName(manifest)!);
-    File.WriteAllText(manifest, """
-        manifest:
-          projects:
-            - name: zephyr
-              url: https://example.invalid/zephyr
-              path: zephyr
-        """);
-    var application = Directory.CreateDirectory(Path.Combine(workspace, "retroplc-runtime", "app")).FullName;
-    File.WriteAllText(Path.Combine(application, "CMakeLists.txt"), "# fixture");
-    var zephyrDirectory = Directory.CreateDirectory(Path.Combine(workspace, "zephyr")).FullName;
-    var git = await RunAsync(new BuildProcess("git", ["init", "--quiet"], zephyrDirectory));
-    Check(git.ExitCode == 0, "temporary Zephyr Git checkout");
-    var sdkDirectory = Directory.CreateDirectory(Path.Combine(root, ".zephyr", "sdk")).FullName;
-
-    var ac6 = Directory.CreateDirectory(Path.Combine(root, ".zinstaller")).FullName;
-    File.WriteAllText(Path.Combine(ac6, "env.yml"), "# fixture");
-    File.WriteAllText(Path.Combine(ac6, "env.py"), "# fixture");
-    File.WriteAllText(Path.Combine(ac6, "env.sh"), """
-        export VIRTUAL_ENV="$PYTHON_VENV_PATH"
-        export PATH="${BASH_SOURCE[0]%/*}/tools/host:$PATH"
-        echo "AC6 startup output"
-        """);
-    var python = Path.Combine(ac6, ".venv", "bin", "python");
-    var managedPython = Path.Combine(development.ApplicationDirectory, ".zinstaller", ".venv", "bin", "python");
-    if (!File.Exists(managedPython))
-        throw new FileNotFoundException("Run setup.sh to install the managed Python used by the gRPC fixture.", managedPython);
-    var backendPackage = Directory.CreateDirectory(Path.Combine(root, "tools", "zephyr-backend", "retroplc_zephyr")).FullName;
-    foreach (var file in Directory.EnumerateFiles(Path.Combine(development.ApplicationDirectory,
-                 "tools", "zephyr-backend", "retroplc_zephyr"), "*.py"))
-        File.Copy(file, Path.Combine(backendPackage, Path.GetFileName(file)));
-    File.WriteAllText(Path.Combine(backendPackage, "__main__.py"), """
-        import os
-        import sys
-        from pathlib import Path
-        from time import sleep
-        from .transport import Backend, main
-
-        get_projects = Backend.get_projects
-
-        def delayed_projects(self, request):
-            if request.get("names") == ["slow-fixture"]:
-                (self.root / "request-started").touch()
-                sleep(1)
-                return {"projects": []}
-            return get_projects(self, request)
-
-        Backend.get_projects = delayed_projects
-
-        root = Path(sys.argv[sys.argv.index("--root") + 1])
-        endpoint = Path(sys.argv[sys.argv.index("--endpoint-file") + 1])
-        with (root / "startup.log").open("a") as log:
-            log.write(f"{os.getpid()}\n{endpoint}\n{endpoint.parent.stat().st_mode & 0o777}\n")
-        main()
-        """);
-    WriteExecutable(python, $$"""
-        case "$1" in
-            -s) exec "{{managedPython}}" "$@" ;;
-            --version) echo "Python fixture" ;;
-            -c) exec /usr/bin/readlink -f -- "$3" ;;
-            *) exec "$@" ;;
-        esac
-        """);
-    WriteExecutable(Path.Combine(ac6, ".venv", "bin", "west"), """
-        case "$1 $2" in
-            'build -p')
-                printf '%s\n' "$ZEPHYR_SDK_INSTALL_DIR" "$ZEPHYR_TOOLCHAIN_VARIANT" "$@"
-                [[ "$WEST_CONFIG_LOCAL" == "$PWD/.west/config" ]] || exit 9
-                for argument in "$@"; do
-                    if [[ "$argument" == '-DBOARD:STRING=invalid_board' ]]; then
-                        echo "CMake: unsupported board invalid_board" >&2
-                        exit 7
-                    fi
-                done
+    var project = Directory.CreateDirectory(Path.Combine(root, "sample project")).FullName;
+    var installation = Directory.CreateDirectory(Path.Combine(root, "installed workspace")).FullName;
+    var pixi = Path.Combine(root, "fake pixi");
+    File.WriteAllText(Path.Combine(installation, "pixi.toml"), "");
+    File.WriteAllText(Path.Combine(installation, "pixi.lock"), "");
+    File.WriteAllText(pixi, """
+        #!/bin/sh
+        set -eu
+        test "$#" -ge 5
+        test "$1 $2 $3" = "run --quiet west"
+        test "$PIXI_NO_INSTALL $PIXI_LOCKED" = "true true"
+        test -f pixi.toml
+        printf '%s\n' "$@" >> calls
+        printf '%s\n' 'compiler diagnostic' >&2
+        command=$4
+        project=$5
+        mode=$(cat mode)
+        case "$command" in
+          plc-transpile|plc-build)
+            case "$mode" in
+              fail) exit 23 ;;
+              slow)
+                sleep 30 &
+                echo "$!" > child
+                wait
                 ;;
-            *) echo 'West fixture' ;;
+              no-artifacts) echo '{"event":"result","success":true}'; exit 0 ;;
+              empty) exit 0 ;;
+              invalid) echo '{broken'; exit 0 ;;
+              no-result) echo '{"event":"progress","step":"Compiling"}'; exit 0 ;;
+              nonzero) echo '{"event":"result","success":true}'; exit 29 ;;
+            esac
+            generated="$project/Build/Generated"
+            mkdir -p "$generated"
+            printf 'debug' > "$generated/generated_debug.cpp"
+            printf '%s' '{"version":2,"md5":"0123456789abcdef0123456789abcdef","arrays":[],"leaves":[]}' > "$generated/debug_map.json"
+            if [ "$mode" = bad-map ]; then printf '{}' > "$generated/debug_map.json"; fi
+            if [ "$command" = plc-build ]; then
+              output="$project/Build/Zephyr/app/zephyr"
+              mkdir -p "$output"
+              for artifact in zephyr.elf zephyr.signed.bin zephyr.signed.hex zephyr.map; do
+                printf 'firmware' > "$output/$artifact"
+              done
+            fi
+            echo 'Compiler output' >&2
+            echo '{"event":"result","success":true,"status":"completed"}'
+            ;;
+          plc-clean)
+            rm -rf "$project/Build/Generated" "$project/Build/Zephyr"
+            echo '{"event":"result","success":true}'
+            ;;
+          plc-upload)
+            case "$mode" in
+              device-error)
+                echo '{"event":"error","success":false,"code":"device_error","command":"plc-upload","message":"Device did not respond"}'
+                exit 17
+                ;;
+              device-no-result) exit 0 ;;
+              device-invalid) echo 'not json'; exit 0 ;;
+            esac
+            echo '{"event":"progress","step":"Uploading","transmitted":65536,"total":245760}'
+            if [ "$mode" = installed ]; then
+              echo '{"event":"result","success":true,"status":"already_installed"}'
+            else
+              echo '{"event":"result","success":true,"status":"update_requested"}'
+            fi
+            ;;
+          plc-verify)
+            confirmed=false
+            for argument in "$@"; do
+              if [ "$argument" = --confirm ]; then confirmed=true; fi
+            done
+            printf '{"event":"result","success":true,"verified":true,"hash":"abc123","version":"1.0.0","confirmed":%s}\n' "$confirmed"
+            ;;
+          *) exit 30 ;;
         esac
         """);
-    WriteExecutable(Path.Combine(ac6, "tools", "host", "cmake"), """
-        if [[ "$1 $2" == "-E remove_directory" ]]; then
-            rm -rf -- "$3"
-        fi
-        """);
-    WriteExecutable(Path.Combine(ac6, "tools", "host", "ninja"), "exit 0");
+    File.SetUnixFileMode(pixi, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 
-    await using var environment = new Ac6Environment(new RetroPlcInstallation(root));
-    Environment.SetEnvironmentVariable("RETROPLC_AC6_DIRECTORY", null);
-    Check(environment.Installation.ResolveHostTools() == ac6, "installation path");
-    Environment.SetEnvironmentVariable("RETROPLC_AC6_DIRECTORY", "missing");
-    Expect<FileNotFoundException>(() => environment.CreateTerminal(project));
-    Environment.SetEnvironmentVariable("RETROPLC_AC6_DIRECTORY", null);
+    var environment = new BuildEnvironment(installation, pixi);
+    var command = environment.CreateWestCommand("plc-build", project);
+    Check(command.WorkingDirectory == installation && command.Executable == pixi &&
+          command.Arguments.SequenceEqual(new[] { "run", "--quiet", "west", "plc-build", project }), "command and cwd");
+    Check(environment.CreateTerminal().WorkingDirectory == installation, "terminal cwd");
+    Check((await new FirmwareBuildService(new BuildEnvironment(root, pixi)).RunAsync(BuildOperation.Verify, project))
+        .Error?.Contains("RETROPLC_BUILD_ENVIRONMENT") == true, "missing environment");
+    Check((await new FirmwareBuildService(new BuildEnvironment(installation, Path.Combine(root, "absent"))).RunAsync(BuildOperation.Verify, project))
+        .Error?.Contains("RETROPLC_PIXI_EXECUTABLE") == true, "missing Pixi");
+    var invalidExecutable = Path.Combine(root, "not executable");
+    File.WriteAllText(invalidExecutable, "");
+    Check(!(await new FirmwareBuildService(new BuildEnvironment(installation, invalidExecutable))
+        .RunAsync(BuildOperation.Verify, project)).Success, "startup failure");
 
-    var ide = new ZephyrBuildConfiguration
+    var service = new FirmwareBuildService(environment);
+    var events = new List<BuildEvent>();
+    var output = new System.Collections.Concurrent.ConcurrentQueue<string>();
+    var device = new DeviceConnection("/dev/serial with space", 230400, 2500);
+    var calls = Path.Combine(installation, "calls");
+    void Mode(string value)
     {
-        BoardTarget = "ide_board",
-        WorkspaceDirectory = ".zephyr/workspace",
-        HostToolsDirectory = ".zinstaller",
-        CMakeOptions = new() { ["MERGED"] = "ide", ["IDE_ONLY"] = "ON" }
-    };
-    var config = new ZephyrConfiguration(environment, ide);
-    Environment.SetEnvironmentVariable("RETROPLC_ZEPHYR_WORKSPACE", null);
-    Environment.SetEnvironmentVariable("RETROPLC_ZEPHYR_APPLICATION", null);
-    Environment.SetEnvironmentVariable("RETROPLC_ZEPHYR_SDK", null);
-    Environment.SetEnvironmentVariable("RETROPLC_ZEPHYR_BOARD", null);
-    Environment.SetEnvironmentVariable("ZEPHYR_SDK_INSTALL_DIR", "/unrelated/system/sdk");
-    var defaultConfig = new ZephyrConfiguration(environment);
-    using (var cancelled = new CancellationTokenSource())
-    {
-        cancelled.Cancel();
-        await ExpectAsync<OperationCanceledException>(() => defaultConfig.ResolveAsync(project, cancellationToken: cancelled.Token));
+        File.WriteAllText(Path.Combine(installation, "mode"), value);
+        File.WriteAllText(calls, "");
+        events.Clear();
     }
-    var startupLog = Path.Combine(root, "startup.log");
-    Check(!File.Exists(startupLog), "pre-cancelled request does not start Python");
-    var previousDirectory = Environment.CurrentDirectory;
+
+    Task<BuildResult> Run(BuildOperation operation, CancellationToken cancellationToken = default) =>
+        service.RunAsync(operation, project, device: device, output: new InlineProgress<string>(output.Enqueue),
+            events: new InlineProgress<BuildEvent>(events.Add), cancellationToken: cancellationToken);
+
+    Mode("ok");
+    Check((await Run(BuildOperation.Verify)).Success && File.ReadAllLines(calls).Contains("plc-transpile"), "verify");
+    Check((await Run(BuildOperation.Build)).Success && output.Contains("Compiler output") &&
+          output.Contains("compiler diagnostic"), "build and both output streams");
+    Check((await Run(BuildOperation.Rebuild)).Success &&
+          File.ReadAllLines(calls).Count(line => line == "plc-build") == 2, "rebuild delegates pristine policy");
+    Mode("fail");
+    Check((await Run(BuildOperation.Download)).ExitCode == 23 && !File.ReadAllLines(calls).Contains("plc-upload"),
+        "failed build blocks upload even with existing firmware");
+    Mode("installed");
+    Check((await Run(BuildOperation.Download)).Event?.Status == "already_installed" &&
+          events.Any(e => e is { Kind: "progress", Transmitted: 65536, Total: 245760 }), "upload progress and already installed");
+    Check(File.ReadAllLines(calls).SequenceEqual(new[]
+    {
+        "run", "--quiet", "west", "plc-build", project, "run", "--quiet", "west", "plc-upload", project,
+        "--serial", device.SerialPort, "--baud", "230400", "--timeout-ms", "2500"
+    }), "upload command order and options");
+    Mode("ok");
+    Check((await Run(BuildOperation.Download)).Event?.Status == "update_requested", "upload request");
+    var verification = await service.VerifyFirmwareAsync(project, device);
+    Check(verification.Success && verification.Event is { Verified: true, Hash: "abc123", Version: "1.0.0", Confirmed: false }
+          && !File.ReadAllLines(calls).Contains("--confirm"), "verify without implicit confirmation");
+    var confirmation = await service.VerifyFirmwareAsync(project, device, confirm: true);
+    Check(confirmation.Success && confirmation.Event?.Confirmed == true && File.ReadAllLines(calls).Contains("--confirm"), "explicit confirm");
+    Mode("device-error");
+    var error = await Run(BuildOperation.Download);
+    Check(error is { ExitCode: 17, Error: "Device did not respond", Event.Code: "device_error" }, "structured error");
+    foreach (var mode in new[] { "device-no-result", "device-invalid", "invalid", "no-result", "empty", "bad-map" })
+    {
+        Mode(mode);
+        Check(!(await Run(BuildOperation.Download)).Success, mode);
+    }
+    Mode("nonzero");
+    Check((await Run(BuildOperation.Build)).ExitCode == 29, "nonzero overrides JSON success");
+
+    Mode("slow");
+    using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+    var running = Run(BuildOperation.Download, cancellation.Token);
+    var childFile = Path.Combine(installation, "child");
+    while (!File.Exists(childFile))
+    {
+        Check(!running.IsCompleted, "fixture started");
+        await Task.Delay(20, cancellation.Token);
+    }
+    var child = int.Parse(File.ReadAllText(childFile));
+    await cancellation.CancelAsync();
     try
     {
-        Environment.CurrentDirectory = Path.GetTempPath();
-        var defaults = await defaultConfig.ResolveAsync(Path.GetRelativePath(root, project));
-        Check(!File.Exists(startupLog), "local settings do not launch Python");
-        var requests = await Task.WhenAll(Enumerable.Range(0, 8).Select(
-            _ => defaultConfig.GetWorkspaceInfoAsync(".zephyr/workspace")));
-        Check(requests.All(info => info.ManifestFile == manifest && info.ZephyrCloned &&
-                                 info.ZephyrDirectory == zephyrDirectory), "workspace RPC returns west metadata");
-        var startup = File.ReadAllLines(startupLog);
-        Check(startup.Length == 3, "concurrent requests use one backend process");
-        Check(!Directory.Exists(Path.GetDirectoryName(startup[1])), "private endpoint directory was removed");
-        Check(startup[2] == "448", "endpoint directory is private (0700)");
-        Check(defaults.WorkspaceDirectory == workspace && defaults.ApplicationDirectory == application &&
-              defaults.SdkDirectory == sdkDirectory && defaults.BoardTarget == "arduino_opta/stm32h747xx/m7",
-            "flat SDK, single workspace, lowercase Runtime and board defaults are independent of cwd");
+        await running.WaitAsync(TimeSpan.FromSeconds(5));
+        throw new Exception("Expected cancellation.");
     }
-    finally
+    catch (OperationCanceledException)
     {
-        Environment.CurrentDirectory = previousDirectory;
+        Check(!File.ReadAllLines(calls).Contains("plc-upload"), "cancelled build blocks upload");
+        var stat = $"/proc/{child}/stat";
+        var deadline = Stopwatch.StartNew();
+        while (ChildIsRunning(stat) && deadline.Elapsed < TimeSpan.FromSeconds(2))
+            await Task.Delay(20);
+        Check(!ChildIsRunning(stat), "process tree stopped");
     }
 
-    var customSdk = Path.Combine(root, "custom sdk");
-    var customDefaults = new ZephyrConfiguration(environment, ide with { SdkDirectory = "custom sdk" });
-    Check((await customDefaults.ResolveAsync(project)).SdkDirectory == customSdk, "configured IDE SDK");
-    Environment.SetEnvironmentVariable("RETROPLC_ZEPHYR_SDK", "custom sdk");
-    Check((await defaultConfig.ResolveAsync(project)).SdkDirectory == customSdk, "explicit SDK environment override");
-    Environment.SetEnvironmentVariable("RETROPLC_ZEPHYR_SDK", null);
-
-    var settings = new ZephyrBuildConfiguration
-    {
-        BoardTarget = "fixture_board@1.0/soc/cpu",
-        SdkDirectory = "../.zephyr/sdk",
-        CMakeOptions = new() { ["MERGED"] = "project", ["DTC_OVERLAY_FILE"] = "board overlay.dts" }
-    };
-    var resolved = await config.ResolveAsync(project, settings, new() { BoardTarget = "override", CMakeOptions = new() { ["MERGED"] = "operation" } });
-    Check(resolved.BoardTarget == "override" && resolved.SdkDirectory == sdkDirectory, "operation and project precedence");
-    Check(resolved.WorkspaceDirectory == workspace && resolved.HostToolsDirectory == ac6, "IDE relative paths");
-    Check(resolved.CMakeOptions!["MERGED"] == "operation" && resolved.CMakeOptions["IDE_ONLY"] == "ON", "CMake options");
-    var alternate = await defaultConfig.ResolveAsync(project, new() { WorkspaceDirectory = "alternate-workspace" },
-        new() { ApplicationDirectory = "alternate app", BuildDirectory = "alternate build" });
-    Check(alternate.WorkspaceDirectory == Path.Combine(project, "alternate-workspace") &&
-          alternate.ApplicationDirectory == Path.Combine(project, "alternate app") &&
-          alternate.BuildDirectory == Path.Combine(project, "alternate build"),
-        "project and operation directory overrides stay relative to the project");
-    await ExpectAsync<FileNotFoundException>(() => config.GetWorkspaceInfoAsync("missing"));
-    var projects = await config.GetProjectsAsync(workspace, ["zephyr"]);
-    var westConfig = await config.GetWestConfigAsync(workspace, ["manifest.path", "manifest.unknown"]);
-    Check(projects.Single() is { Name: "zephyr", Cloned: true } &&
-          westConfig.Values["manifest.path"] == "retroplc-runtime" && westConfig.Values["manifest.unknown"] is null,
-        "project and west configuration RPCs");
-
-    var boards = config.GetBoardService(project, settings);
-    await ExpectAsync<NotSupportedException>(() => boards.GetAvailableBoardsAsync());
-    await ExpectAsync<NotSupportedException>(() => boards.ValidateBoardAsync(settings.BoardTarget!));
-    using (var cancelled = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
-    {
-        var request = config.GetProjectsAsync(workspace, ["slow-fixture"], cancelled.Token);
-        while (!File.Exists(Path.Combine(root, "request-started")))
-            await Task.Delay(10, cancelled.Token);
-        await cancelled.CancelAsync();
-#pragma warning disable VSTHRD003
-        await ExpectAsync<OperationCanceledException>(() => request);
-#pragma warning restore VSTHRD003
-    }
-
-    var terminal = await config.CreateTerminalAsync(project, settings);
-    var terminalRun = await RunAsync(terminal, "pwd\nwhich python\nwhich west\nwhich cmake\nwhich ninja\nexit\n");
-    Check(terminalRun.ExitCode == 0 && terminalRun.Output.Contains(project) &&
-        terminalRun.Output.Contains(Path.Combine(ac6, ".venv", "bin", "python")) &&
-        terminalRun.Output.Contains(Path.Combine(ac6, ".venv", "bin", "west")) &&
-        terminalRun.Output.Contains(Path.Combine(ac6, "tools", "host", "cmake")) &&
-        terminalRun.Output.Contains(Path.Combine(ac6, "tools", "host", "ninja")), "interactive tool resolution");
-    var ninja = Path.Combine(ac6, "tools", "host", "ninja");
-    File.Move(ninja, ninja + ".disabled");
-    var invalid = await RunAsync(terminal, "exit\n");
-    Check(invalid.ExitCode != 0 && invalid.Error.Contains("ninja"), "system Ninja fallback rejected");
-    File.Move(ninja + ".disabled", ninja);
-
-    var tools = Directory.CreateDirectory(Path.Combine(root, "strucpp-tools")).FullName;
-    Environment.SetEnvironmentVariable("RETROPLC_TOOLS_DIRECTORY", tools);
-    var helper = Path.Combine(development.ApplicationDirectory, "tools", "generate-strucpp-debug.mjs");
-    File.Copy(helper, Path.Combine(root, "tools", Path.GetFileName(helper)));
-    var missingNode = Expect<FileNotFoundException>(() => StrucppToolchain.GetNativeCompilerCommand(root));
-    var node = Path.Combine(tools, "node", "bin", "node");
-    Check(missingNode.FileName == node, "missing private Node diagnostic");
-    Directory.CreateDirectory(Path.GetDirectoryName(node)!);
-    File.CreateSymbolicLink(node, Path.Combine(development.ApplicationDirectory, "tools", "node", "bin", "node"));
-    var missingCompiler = Expect<FileNotFoundException>(() => StrucppToolchain.GetNativeCompilerCommand(root));
-    Check(missingCompiler.FileName == Path.Combine(tools, "strucpp", "dist", "node", "index.js"), "missing native API diagnostic");
-    Directory.CreateSymbolicLink(Path.Combine(tools, "strucpp"), Path.Combine(development.ApplicationDirectory, "tools", "strucpp"));
-
-    var sourceDirectory = Directory.CreateDirectory(Path.Combine(project, "ProjectFiles")).FullName;
-    var nested = Directory.CreateDirectory(Path.Combine(sourceDirectory, "POUs", "Programs")).FullName;
-    var tests = Directory.CreateDirectory(Path.Combine(sourceDirectory, "Tests")).FullName;
-    File.WriteAllText(Path.Combine(tests, "ignored.st"), "INVALID TEST SOURCE");
-    var plcSource = Path.Combine(nested, "Main.st");
-    File.WriteAllText(plcSource, """
-        PROGRAM Main
-        VAR
-            Counter : INT;
-        END_VAR
-        Counter := Counter + 1;
-        END_PROGRAM
-        """);
-    File.WriteAllText(Path.Combine(sourceDirectory, "Configuration.st"), """
-        CONFIGURATION Configuration1
-            RESOURCE PLC_CPU ON PLC
-                TASK MainTask(INTERVAL := T#100ms, PRIORITY := 1);
-                PROGRAM MainInst WITH MainTask : Main;
-            END_RESOURCE
-        END_CONFIGURATION
-        """);
-    var libraries = Directory.CreateDirectory(Path.Combine(project, "Libraries")).FullName;
-    File.Copy(Path.Combine(development.ApplicationDirectory, "tools", "strucpp", "libs", "iec-std-functions.stlib"),
-        Path.Combine(libraries, "iec-std-functions.stlib"));
-    WriteExecutable(Path.Combine(tools, "mcumgr", "mcumgrctl"), "echo 'Firmware updater fixture'");
-
-    var service = new FirmwareBuildService(config);
-    var defaultBuild = new FirmwareBuildService(defaultConfig);
-    var westPath = Path.Combine(ac6, ".venv", "bin", "west");
-    foreach (var required in new[] { westPath, Path.Combine(application, "CMakeLists.txt") })
-    {
-        File.Move(required, required + ".fixture-hidden");
-        try
-        {
-            await ExpectAsync<IOException>(() => defaultBuild.StartBuildAsync(project, "Test"));
-        }
-        finally
-        {
-            File.Move(required + ".fixture-hidden", required);
-        }
-    }
-    await ExpectAsync<FileNotFoundException>(() => defaultBuild.StartBuildAsync(project, "Test",
-        overrides: new() { WorkspaceDirectory = "missing-workspace" }));
-    await ExpectAsync<DirectoryNotFoundException>(() => defaultBuild.StartBuildAsync(project, "Test",
-        overrides: new() { SdkDirectory = "missing-sdk" }));
-    var verify = service.StartVerify(project, "Test");
-    var verified = await RunAsync(verify.InitialProcess);
-    Check(verified.ExitCode == 0 && verify.ProcessExited(0).ExitCode == 0, $"ST verification stage: {verified.Error}");
-    var generated = Path.Combine(project, "Build", "Generated");
-    var generatedMap = Path.Combine(generated, "debug_map.json");
-    CheckDebugMap(generatedMap);
-    Check(File.Exists(Path.Combine(generated, "generated.hpp")) &&
-          File.Exists(Path.Combine(generated, "configuration.cpp")) &&
-          File.Exists(Path.Combine(generated, "pou_MAIN.cpp")) &&
-          File.ReadAllText(Path.Combine(generated, "generated_debug.cpp")).Contains("&g_config", StringComparison.Ordinal),
-        "native header, translation units and pointer table");
-    var initialMap = File.ReadAllText(generatedMap);
-    var stale = Path.Combine(generated, "stale.cpp");
-    File.WriteAllText(stale, "obsolete fixture");
-    var invalidSource = Path.Combine(nested, "Invalid.st");
-    File.WriteAllText(invalidSource, "PROGRAM VAR ???");
-    var invalidCompilation = await service.StartDownloadAsync(project, "Test", settings);
-    var compileFailure = await RunAsync(invalidCompilation.InitialProcess);
-    Check(compileFailure.ExitCode != 0 && compileFailure.Error.Contains("Error:", StringComparison.Ordinal) &&
-          invalidCompilation.ProcessExited(compileFailure.ExitCode) is { NextProcess: null },
-        "compiler diagnostics and failed download preparation");
-    Check(File.Exists(stale) && File.ReadAllText(generatedMap) == initialMap,
-        "failed compilation preserves the previous generated set");
-    File.Delete(invalidSource);
-    var delayedImport = Path.Combine(root, "delay-native-compiler.mjs");
-    File.WriteAllText(delayedImport, "await new Promise(resolve => setTimeout(resolve, 10000));");
-    var delayedCompiler = verify.InitialProcess with
-    {
-        Arguments = ["--import", delayedImport, .. verify.InitialProcess.Arguments]
-    };
-    await ExpectAsync<OperationCanceledException>(() => RunAsync(delayedCompiler, timeoutSeconds: 1));
-    Check(File.Exists(stale) && File.ReadAllText(generatedMap) == initialMap,
-        "terminating the Node process preserves the previous generated set");
-    var repeated = await RunAsync(verify.InitialProcess);
-    Check(repeated.ExitCode == 0 && !File.Exists(stale) && File.ReadAllText(generatedMap) == initialMap,
-        "successful compilation removes stale sources and retains a deterministic map");
-
-    var brokenLibrary = Path.Combine(libraries, "broken.stlib");
-    File.WriteAllText(brokenLibrary, "invalid archive");
-    var libraryFailure = await RunAsync(verify.InitialProcess);
-    Check(libraryFailure.ExitCode != 0 && libraryFailure.Error.Contains("broken.stlib", StringComparison.Ordinal) &&
-          File.ReadAllText(generatedMap) == initialMap, "project libraries are loaded and errors preserve generated outputs");
-    File.Delete(brokenLibrary);
-
-    Check((await defaultBuild.StartBuildAsync(project, "Test")).ProcessExited(0).NextProcess is { } defaultWest &&
-          defaultWest.WorkingDirectory == workspace && defaultWest.Arguments.Contains("arduino_opta/stm32h747xx/m7"),
-        "firmware stage uses provisioned paths and board without overrides");
-    var invalidBoard = await service.StartBuildAsync(project, "Test", settings with { BoardTarget = "invalid_board" });
-    var westFailure = await RunAsync(invalidBoard.ProcessExited(0).NextProcess!);
-    Check(westFailure.Error.Contains("unsupported board invalid_board") &&
-          invalidBoard.ProcessExited(westFailure.ExitCode) is { ExitCode: 7, NextProcess: null },
-        "west diagnostics and failure exit code reach the build output pipeline");
-    var failed = await service.StartDownloadAsync(project, "Test", settings);
-    Check(failed.ProcessExited(7) is { ExitCode: 7, NextProcess: null }, "failed ST stage stops the build");
-
-    var build = await service.StartBuildAsync(project, "Test", settings);
-    var westBuild = build.ProcessExited(0).NextProcess!;
-    var result = await RunAsync(westBuild);
-    Check(result.ExitCode == 0 && result.Output.Contains(sdkDirectory) &&
-        result.Output.Contains(settings.BoardTarget!) && result.Output.Contains("--sysbuild") &&
-        result.Output.Contains("-Dapp_RETROPLC_GENERATED_DIR=" + Path.Combine(project, "Build", "Generated")) &&
-        result.Output.Contains("-Dapp_ZEPHYR_SDK_INSTALL_DIR=" + sdkDirectory) &&
-        result.Output.Contains("-Dapp_Zephyr-sdk_DIR=" + Path.Combine(sdkDirectory, "cmake")) &&
-        westBuild.Arguments.Contains("-DDTC_OVERLAY_FILE=board overlay.dts") &&
-        result.Output.Split('\n').Contains("zephyr") && westBuild.WorkingDirectory == workspace &&
-        westBuild.Arguments[westBuild.Arguments.ToList().IndexOf("-s") + 1] == application,
-        "West build input and environment");
-    var buildDirectory = westBuild.Arguments[westBuild.Arguments.ToList().IndexOf("-d") + 1];
-    var output = Directory.CreateDirectory(Path.Combine(buildDirectory, "app", "zephyr")).FullName;
-    File.WriteAllText(Path.Combine(output, "zephyr.signed.bin"), "firmware fixture");
-    File.WriteAllText(Path.Combine(output, "zephyr.elf"), "ELF fixture");
-    Check(build.ProcessExited(0).ExitCode == 0 &&
-        File.Exists(Path.Combine(project, "Build", "Artifacts", "firmware.bin")), "artifact publishing");
-    var artifactMap = Path.Combine(project, "Build", "Artifacts", "debug_map.json");
-    Check(File.ReadAllText(artifactMap) == initialMap, "published firmware includes its debug map");
-    var cancelledBuild = await service.StartBuildAsync(project, "Test", settings);
-    cancelledBuild.ProcessExited(0);
-    Check(cancelledBuild.ProcessExited(130).NextProcess is null && File.ReadAllText(artifactMap) == initialMap,
-        "cancelled firmware build leaves the last successful artifacts intact");
-    var mismatched = await service.StartBuildAsync(project, "Test", settings);
-    mismatched.ProcessExited(0);
-    File.AppendAllText(generatedMap, " ");
-    Check(mismatched.ProcessExited(0) is { ExitCode: -1, ErrorMessage: not null } &&
-          File.ReadAllText(artifactMap) == initialMap, "changed debug outputs cannot publish with older firmware");
-    File.WriteAllText(generatedMap, initialMap);
-    Check((await service.StartBuildAsync(project, "Test", settings)).ProcessExited(0).NextProcess!.Arguments.Contains("auto"),
-        "west controls automatic pristine handling");
-    Check((await service.StartBuildAsync(project, "Test", settings with { PristineMode = "never" }))
-          .ProcessExited(0).NextProcess!.Arguments.Contains("never"), "explicit pristine mode forwarded");
-    Check((await service.StartRebuildAsync(project, "Test", settings)).ProcessExited(0).NextProcess!.Arguments.Contains("always"), "pristine rebuild");
-
-    var download = await service.StartDownloadAsync(project, "Test", settings);
-    download.ProcessExited(0);
-    var updater = download.ProcessExited(0).NextProcess!;
-    Check((await RunAsync(updater)).Output.Contains("Firmware updater fixture"), "download after a successful build");
-    var nonSysbuild = (await service.StartBuildAsync(project, "Test", settings with { UseSysbuild = false })).ProcessExited(0).NextProcess!;
-    Check(nonSysbuild.Arguments.Contains("--no-sysbuild") &&
-        nonSysbuild.Arguments.Any(argument => argument.StartsWith("-DRETROPLC_GENERATED_DIR=")), "standalone Zephyr build");
-    var clean = await service.StartCleanAsync(project, settings);
-    Check((await RunAsync(clean.InitialProcess)).ExitCode == 0 &&
-        !Directory.Exists(Path.Combine(project, "Build")), "managed clean");
-
-    var pid = int.Parse(File.ReadLines(startupLog).First());
-    using var backend = Process.GetProcessById(pid);
-    await environment.DisposeAsync();
-    Check(backend.HasExited, "managed backend process terminated");
-    await environment.DisposeAsync();
-    await ExpectAsync<ObjectDisposedException>(() => config.GetWorkspaceInfoAsync(workspace));
-
-    await using var brokenEnvironment = new Ac6Environment(new RetroPlcInstallation(Path.Combine(root, "missing")));
-    var broken = new ZephyrConfiguration(brokenEnvironment);
-    var missingPython = await ExpectAsync<FileNotFoundException>(() => broken.GetWorkspaceInfoAsync(workspace));
-    Check(missingPython.Message.Contains("Managed Python"), "missing Python diagnostic");
-
-    WriteExecutable(python, $$"""exec "{{managedPython}}" -S "$@" """);
-    await using var retryEnvironment = new Ac6Environment(new RetroPlcInstallation(root));
-    await using var retry = new ZephyrConfiguration(retryEnvironment);
-    var missingGrpc = await ExpectAsync<IOException>(() => retry.GetWorkspaceInfoAsync(workspace));
-    Check(missingGrpc.Message.Contains("No module named 'grpc'") && missingGrpc.Message.Contains("setup.sh"),
-        "missing gRPC diagnostic");
-    WriteExecutable(python, $$"""exec "{{managedPython}}" "$@" """);
-    Check((await retry.GetWorkspaceInfoAsync(workspace)).Directory == workspace, "backend startup can recover");
-    await retryEnvironment.DisposeAsync();
-
-    var stalledLog = Path.Combine(root, "stalled.log");
-    WriteExecutable(python, $$"""
-        printf '%s\n' "$$" "${8}" > "{{stalledLog}}"
-        exec /usr/bin/sleep 60
-        """);
-    await using var stalledEnvironment = new Ac6Environment(new RetroPlcInstallation(root));
-    var stalledConfig = new ZephyrConfiguration(stalledEnvironment);
-    var pending = stalledConfig.GetWorkspaceInfoAsync(workspace);
-    using (var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
-    {
-        while (!File.Exists(stalledLog) || File.ReadAllLines(stalledLog).Length < 2)
-            await Task.Delay(15, deadline.Token);
-    }
-    var launchInfo = File.ReadAllLines(stalledLog);
-    using var stalledProcess = Process.GetProcessById(int.Parse(launchInfo[0]));
-    await stalledEnvironment.DisposeAsync();
-    Check(stalledProcess.HasExited, "nonresponsive Python process terminated during shutdown");
-    Check(!Directory.Exists(Path.GetDirectoryName(launchInfo[1])), "failed startup removed private endpoint directory");
-    // Disposal cancels the startup task before it advertises an endpoint.
-#pragma warning disable VSTHRD003
-    await ExpectAsync<OperationCanceledException>(() => pending);
-#pragma warning restore VSTHRD003
-    Console.WriteLine("Passed AC6 launcher, configuration, SDK, board, and firmware stage checks (isolated fixtures).");
-    return 0;
+    Mode("ok");
+    Check((await Run(BuildOperation.Clean)).Success && !Directory.Exists(Path.Combine(project, "Build", "Generated")) &&
+          !Directory.Exists(Path.Combine(project, "Build", "Zephyr")), "clean");
+    Mode("no-artifacts");
+    Check(!(await Run(BuildOperation.Download)).Success && !File.ReadAllLines(calls).Contains("plc-upload"), "missing artifacts");
+    Check(!(await service.RunAsync(BuildOperation.Build, project, new() { BoardTarget = "custom" })).Success, "legacy override");
+    Directory.CreateDirectory(Path.Combine(project, "Libraries"));
+    File.WriteAllText(Path.Combine(project, "Libraries", "example.stlib"), "");
+    Check((await Run(BuildOperation.Verify)).Error?.Contains("Libraries") == true, "unsupported project libraries");
+    Console.WriteLine("BuildHost simulated Pixi tests passed.");
 }
 finally
 {
     Directory.Delete(root, recursive: true);
 }
 
-static async Task RunSessionAsync(FirmwareBuildSession session)
+static bool ChildIsRunning(string path)
 {
-    var command = session.InitialProcess;
-    while (true)
+    try
     {
-        var result = await RunAsync(command, timeoutSeconds: 300);
-        Console.WriteLine(result.Output);
-        Console.Error.WriteLine(result.Error);
-        var outcome = session.ProcessExited(result.ExitCode);
-        if (outcome.IsComplete)
-        {
-            Check(outcome.ExitCode == 0, $"{session.Operation} exit {outcome.ExitCode}: {outcome.ErrorMessage}");
-            return;
-        }
-        command = outcome.NextProcess!;
+        var stat = File.ReadAllText(path);
+        return stat[stat.LastIndexOf(')') + 2] != 'Z';
+    }
+    catch (FileNotFoundException)
+    {
+        return false;
+    }
+    catch (DirectoryNotFoundException)
+    {
+        return false;
     }
 }
 
-static void CheckDebugMap(string path)
-{
-    using var map = JsonDocument.Parse(File.ReadAllBytes(path));
-    var root = map.RootElement;
-    Check(root.GetProperty("version").GetInt32() == 2 &&
-          root.GetProperty("md5").GetString()?.Length == 32 &&
-          root.GetProperty("arrays").ValueKind == JsonValueKind.Array &&
-          root.GetProperty("leaves").GetArrayLength() > 0, "STruC++ v2 debug map");
-}
-
-static void Check(bool condition, string description)
+static void Check(bool condition, string label)
 {
     if (!condition)
-        throw new InvalidOperationException($"Failed {description}.");
+        throw new InvalidOperationException($"Failed: {label}");
 }
 
-static T Expect<T>(Action action) where T : Exception
+sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
 {
-    try
-    {
-        action();
-    }
-    catch (T exception)
-    {
-        return exception;
-    }
-
-    throw new InvalidOperationException($"Expected {typeof(T).Name}.");
-}
-
-static async Task<T> ExpectAsync<T>(Func<Task> action) where T : Exception
-{
-    try
-    {
-        await action();
-    }
-    catch (T exception)
-    {
-        return exception;
-    }
-
-    throw new InvalidOperationException($"Expected {typeof(T).Name}.");
-}
-
-static void WriteExecutable(string path, string body)
-{
-    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-    File.WriteAllText(path, "#!/bin/bash\n" + body + "\n");
-    if (!OperatingSystem.IsWindows())
-        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-}
-
-static async Task<(int ExitCode, string Output, string Error)> RunAsync(BuildProcess command, string input = "", int timeoutSeconds = 20)
-{
-    var info = new ProcessStartInfo(command.Executable)
-    {
-        WorkingDirectory = command.WorkingDirectory,
-        RedirectStandardInput = true,
-        RedirectStandardOutput = true,
-        RedirectStandardError = true,
-        UseShellExecute = false
-    };
-    foreach (var argument in command.Arguments)
-        info.ArgumentList.Add(argument);
-
-    using var process = Process.Start(info)!;
-    var stdout = process.StandardOutput.ReadToEndAsync();
-    var stderr = process.StandardError.ReadToEndAsync();
-    var captured = Task.WhenAll(stdout, stderr);
-    if (input.Length != 0)
-    {
-        try
-        {
-            await process.StandardInput.WriteAsync(input);
-        }
-        catch (IOException) when (process.HasExited)
-        {
-        }
-    }
-    process.StandardInput.Close();
-
-    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
-    try
-    {
-        await process.WaitForExitAsync(timeout.Token);
-        // The stand-alone runner has no synchronization context, and both pipes
-        // are drained concurrently from the moment the process starts.
-#pragma warning disable VSTHRD003
-        var output = await captured;
-#pragma warning restore VSTHRD003
-        return (process.ExitCode, output[0], output[1]);
-    }
-    catch (OperationCanceledException)
-    {
-        if (!process.HasExited)
-            process.Kill(entireProcessTree: true);
-        await process.WaitForExitAsync();
-        throw;
-    }
+    public void Report(T value) => report(value);
 }

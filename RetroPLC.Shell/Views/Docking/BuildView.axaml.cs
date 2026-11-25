@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-using System.ComponentModel;
+using System.Collections.Specialized;
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
-using Avalonia.Threading;
 using RetroPLC.Shell.ViewModels.Docking;
 
 namespace RetroPLC.Shell.Views.Docking;
@@ -15,69 +13,44 @@ public partial class BuildView : UserControl
     public BuildView()
     {
         InitializeComponent();
-        DataContextChanged += OnDataContextChanged;
+        DataContextChanged += (_, _) => BindOutput();
     }
 
-    private void OnDataContextChanged(object? sender, System.EventArgs e)
+    protected override void OnLoaded(RoutedEventArgs e)
     {
-        if (_viewModel is not null)
-        {
-            _viewModel.Session.PropertyChanged -= OnSessionPropertyChanged;
-        }
-
-        _viewModel = DataContext as BuildViewModel;
-        if (_viewModel is null)
-        {
-            return;
-        }
-
-        _viewModel.Session.PropertyChanged += OnSessionPropertyChanged;
-        if (_viewModel.Session.ConsumeFocusRequest())
-        {
-            FocusTerminal();
-        }
+        base.OnLoaded(e);
+        BindOutput();
     }
 
-    private void OnSessionPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    protected override void OnUnloaded(RoutedEventArgs e)
     {
-        if (e.PropertyName == nameof(BuildTerminalSession.Terminal) &&
-            _viewModel?.Session.ConsumeFocusRequest() == true)
+        base.OnUnloaded(e);
+        UnbindOutput();
+    }
+
+    private void BindOutput()
+    {
+        UnbindOutput();
+        if (IsLoaded && DataContext is BuildViewModel model)
         {
-            FocusTerminal();
+            _viewModel = model;
+            model.Output.CollectionChanged += OnOutputChanged;
+            ScrollToEnd();
         }
     }
 
-    private void FocusTerminal()
+    private void UnbindOutput()
     {
-        var terminal = _viewModel?.Session.Terminal;
-        if (terminal is null)
-        {
-            return;
-        }
-
-        Dispatcher.UIThread.Post(() =>
-        {
-            if (terminal.IsLoaded)
-            {
-                terminal.Focus();
-                return;
-            }
-
-            void FocusOnLoaded(object? sender, RoutedEventArgs e)
-            {
-                terminal.Loaded -= FocusOnLoaded;
-                Dispatcher.UIThread.Post(() => terminal.Focus(), DispatcherPriority.Input);
-            }
-
-            terminal.Loaded += FocusOnLoaded;
-        }, DispatcherPriority.Input);
+        if (_viewModel is { } model)
+            model.Output.CollectionChanged -= OnOutputChanged;
+        _viewModel = null;
     }
 
-    private void TerminalScrollBar_OnScroll(object? sender, ScrollEventArgs e)
+    private void OnOutputChanged(object? sender, NotifyCollectionChangedEventArgs e) => ScrollToEnd();
+
+    private void ScrollToEnd()
     {
-        if (DataContext is BuildViewModel build)
-        {
-            build.Session.Terminal.ViewportY = (int)e.NewValue;
-        }
+        if (_viewModel?.Output.Count is > 0)
+            OutputList.ScrollIntoView(_viewModel.Output.Count - 1);
     }
 }

@@ -30,8 +30,8 @@ public sealed class DockFactory : Factory
     private IRootDock? _rootDock;
     private IDocumentDock? _documentDock;
     private IToolDock? _terminalDock;
-    private readonly ZephyrConfiguration _zephyr = new();
-    private readonly CancellationTokenSource _zephyrShutdown = new();
+    private readonly BuildEnvironment _buildEnvironment = new();
+    private readonly CancellationTokenSource _buildShutdown = new();
     private BuildViewModel? _buildTool;
     private ReferencesViewModel? _referencesTool;
     private MessagesViewModel? _messagesTool;
@@ -78,7 +78,7 @@ public sealed class DockFactory : Factory
             tool1.LoadProject(_currentProject, _projectDirectory);
             tool1.SetDocumentSymbols(_currentProject, _projectDirectory, _projectSymbols);
         }
-        var tool6 = new BuildViewModel(new FirmwareBuildService(_zephyr))
+        var tool6 = new BuildViewModel(new FirmwareBuildService(_buildEnvironment))
         {
             Id = "Build",
             Title = "Build",
@@ -87,6 +87,7 @@ public sealed class DockFactory : Factory
         };
         tool6.OperationExited += OnBuildOperationExited;
         _buildTool = tool6;
+        tool6.DownloadActivityChanged += () => DownloadActivityChanged?.Invoke();
         var messagesTool = new MessagesViewModel(NavigateToLocation)
         {
             Id = "Messages",
@@ -121,13 +122,21 @@ public sealed class DockFactory : Factory
             CanCreateDocument = true
         };
 
+        var debugTool = new DebugViewModel
+        {
+            Id = "Debug",
+            Title = "Debug",
+            CanPin = true,
+            CanClose = true
+        };
+        DebugTool = debugTool;
         var bottomDock = new ToolDock
         {
             Proportion = 0.27,
             Alignment = Alignment.Bottom,
             CanCloseLastDockable = true,
             ActiveDockable = tool6,
-            VisibleDockables = CreateList<IDockable>(tool6, messagesTool)
+            VisibleDockables = CreateList<IDockable>(tool6, messagesTool, debugTool)
         };
 
         var centerDock = new ProportionalDock
@@ -763,11 +772,11 @@ public sealed class DockFactory : Factory
 
         var project = _currentProject;
         var number = ++_terminalNumber;
-        var token = _zephyrShutdown.Token;
+        var token = _buildShutdown.Token;
         TerminalViewModel terminal;
         try
         {
-            terminal = await TerminalViewModel.CreateAsync(_zephyr, _projectDirectory, project?.Zephyr, token);
+            terminal = await TerminalViewModel.CreateAsync(_buildEnvironment, token);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
@@ -944,8 +953,14 @@ public sealed class DockFactory : Factory
     };
 
     public event Action<BuildOperation, int>? BuildOperationExited;
+    public event Action? DownloadActivityChanged;
+
+    public DebugViewModel? DebugTool { get; private set; }
+    public string? ProjectDirectory => _projectDirectory;
+    public bool IsDownloadActive => _buildTool?.IsDownloadActive == true;
 
     public string? BuildOperationError => _buildTool?.OperationError;
+    public string? BuildOperationStatus => _buildTool?.OperationStatus;
 
     private void OnBuildOperationExited(BuildOperation operation, int exitCode)
     {
@@ -963,23 +978,43 @@ public sealed class DockFactory : Factory
         });
     }
 
+    public void ShowDebugTool()
+    {
+        if (DebugTool is not { } tool || _terminalDock is not { } dock)
+            return;
+
+        var root = FindRoot(tool, _ => true);
+        if (root?.LeftPinnedDockables?.Contains(tool) == true ||
+            root?.RightPinnedDockables?.Contains(tool) == true ||
+            root?.TopPinnedDockables?.Contains(tool) == true ||
+            root?.BottomPinnedDockables?.Contains(tool) == true)
+        {
+            PreviewPinnedDockable(tool);
+            return;
+        }
+
+        if (tool.Owner is not IDock currentDock || currentDock.VisibleDockables?.Contains(tool) != true)
+            AddDockable(dock, tool);
+
+        SetActiveDockable(tool);
+        if (tool.Owner is IDock owner)
+            SetFocusedDockable(owner, tool);
+        ActivateWindow(tool);
+    }
+
     public async Task RunBuildToolAsync(BuildOperation operation)
     {
         if (_terminalDock is not { } dock || _buildTool is not { } tool ||
             _projectDirectory is not { } directory || _currentProject is not { } project)
             return;
 
-        var token = _zephyrShutdown.Token;
-        var session = await tool.PrepareAsync(operation, directory, project.Name, project.Zephyr, token);
-        if (token.IsCancellationRequested || !ReferenceEquals(dock, _terminalDock) || !ReferenceEquals(project, _currentProject))
-            return;
-
-        tool.StartSession(session);
+        var token = _buildShutdown.Token;
         if (dock.VisibleDockables?.Contains(tool) != true)
             AddDockable(dock, tool);
 
         SetActiveDockable(tool);
         SetFocusedDockable(dock, tool);
+        await tool.RunAsync(operation, directory, project.Zephyr, project.Device, token);
     }
 
     public void SaveAllDocuments()
@@ -1045,12 +1080,25 @@ public sealed class DockFactory : Factory
 
     public async Task ShutdownAsync()
     {
+        if (DebugTool is { } debug)
+            await debug.StopAsync().ConfigureAwait(false);
+
         _languageServerCancellation?.Cancel();
         _languageServerCancellation?.Dispose();
         _languageServerCancellation = null;
-        await _zephyrShutdown.CancelAsync().ConfigureAwait(false);
-        await Task.WhenAll(_languageClient.StopAsync(), _zephyr.DisposeAsync().AsTask()).ConfigureAwait(false);
-        _zephyrShutdown.Dispose();
+        var process = _buildTool?.ProcessCompletion ?? Task.CompletedTask;
+        await _buildShutdown.CancelAsync().ConfigureAwait(false);
+        try
+        {
+            await Task.WhenAll(_languageClient.StopAsync(), process).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (process.IsCanceled)
+        {
+        }
+        finally
+        {
+            _buildShutdown.Dispose();
+        }
     }
 
     private void StartLanguageServer(string projectDirectory)

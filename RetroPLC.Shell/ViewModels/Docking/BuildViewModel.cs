@@ -1,71 +1,97 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 using System;
-using System.Linq;
+using System.Collections.ObjectModel;
 using System.Threading;
 using System.Threading.Tasks;
-using Avalonia.Threading;
-using CommunityToolkit.Mvvm.ComponentModel;
 using Dock.Model.Mvvm.Controls;
-using Iciclecreek.Terminal;
 using RetroPLC.BuildHost;
-using RetroPLC.Shell.Controls;
 
 namespace RetroPLC.Shell.ViewModels.Docking;
 
 public sealed class BuildViewModel : Tool
 {
     private readonly FirmwareBuildService _buildService;
-    private FirmwareBuildSession? _buildSession;
+    private CancellationTokenSource? _operation;
+    private BuildOperation? _activeOperation;
 
     public BuildViewModel() : this(new FirmwareBuildService())
     {
     }
 
-    public BuildViewModel(FirmwareBuildService buildService)
-    {
-        _buildService = buildService;
-        Session = new BuildTerminalSession();
-    }
+    public BuildViewModel(FirmwareBuildService buildService) => _buildService = buildService;
 
     public event Action<BuildOperation, int>? OperationExited;
+    public event Action? DownloadActivityChanged;
 
-    public BuildTerminalSession Session { get; }
+    public ObservableCollection<string> Output { get; } = [];
+    public bool IsDownloadActive => _activeOperation == BuildOperation.Download;
     public string? OperationError { get; private set; }
+    public string? OperationStatus { get; private set; }
+    public Task ProcessCompletion { get; private set; } = Task.CompletedTask;
 
-    public Task<FirmwareBuildSession> PrepareAsync(BuildOperation operation, string directory, string name,
-        ZephyrBuildConfiguration? project, CancellationToken cancellationToken) => operation switch
+    public async Task RunAsync(BuildOperation operation, string directory, ZephyrBuildConfiguration? project,
+        DeviceConnection? device, CancellationToken cancellationToken)
     {
-        BuildOperation.Verify => Task.FromResult(_buildService.StartVerify(directory, name)),
-        BuildOperation.Build => _buildService.StartBuildAsync(directory, name, project, cancellationToken: cancellationToken),
-        BuildOperation.Rebuild => _buildService.StartRebuildAsync(directory, name, project, cancellationToken: cancellationToken),
-        BuildOperation.Clean => _buildService.StartCleanAsync(directory, project, cancellationToken: cancellationToken),
-        BuildOperation.Download => _buildService.StartDownloadAsync(directory, name, project, cancellationToken: cancellationToken),
-        _ => throw new ArgumentOutOfRangeException(nameof(operation))
-    };
+        if (_operation is not null)
+            return;
 
-    public void StartSession(FirmwareBuildSession session)
-    {
+        using var active = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _operation = active;
+        _activeOperation = operation;
         OperationError = null;
-        _buildSession = session;
-        StartProcess(session.InitialProcess);
-    }
+        OperationStatus = null;
+        Output.Clear();
+        if (IsDownloadActive)
+            DownloadActivityChanged?.Invoke();
 
-    private void StartProcess(BuildProcess process)
-    {
-        // TerminalView launches automatically from its Loaded event.
-        var terminal = new ReadOnlyDockTerminalView
+        // Progress captures the Avalonia synchronization context of the dock command.
+        var output = new Progress<string>(line =>
         {
-            Process = process.Executable,
-            Args = process.Arguments.ToList(),
-            StartingDirectory = process.WorkingDirectory
-        };
-        terminal.ProcessExited += OnProcessExited;
+            if (ReferenceEquals(_operation, active))
+                Output.Add(line);
+        });
+        var events = new Progress<BuildEvent>(message =>
+        {
+            if (!ReferenceEquals(_operation, active))
+                return;
 
-        var previousTerminal = Session.Terminal;
-        previousTerminal.ProcessExited -= OnProcessExited;
-        Session.RequestFocus();
-        Session.Terminal = terminal;
-        previousTerminal.Shutdown();
+            var line = message.Kind switch
+            {
+                "progress" when message.Transmitted is { } sent && message.Total is { } total =>
+                    $"{message.Step} {sent:N0} / {total:N0} bytes",
+                "progress" => message.Step,
+                "error" => $"{message.Command} [{message.Code}] {message.Message}".Trim(),
+                _ => null
+            };
+            if (line is not null)
+                Output.Add(line);
+        });
+
+        BuildResult result;
+        try
+        {
+            var execution = _buildService.RunAsync(operation, directory, project, device, output, events, active.Token);
+            ProcessCompletion = execution;
+            result = await execution;
+        }
+        catch (OperationCanceledException) when (active.IsCancellationRequested)
+        {
+            result = new BuildResult(-1, "Operation cancelled.");
+        }
+
+        OperationError = result.Error;
+        OperationStatus = result.Success ? result.Event?.Status switch
+        {
+            "already_installed" => "Firmware already installed.",
+            "update_requested" => "Firmware update requested. Verify the running image after reboot.",
+            _ => $"{operation} succeeded."
+        } : null;
+        Output.Add(OperationStatus ?? OperationError ?? $"{operation} failed ({result.ExitCode}).");
+        _operation = null;
+        _activeOperation = null;
+        if (operation == BuildOperation.Download)
+            DownloadActivityChanged?.Invoke();
+        OperationExited?.Invoke(operation, result.ExitCode);
     }
 
     public override bool OnClose()
@@ -73,48 +99,7 @@ public sealed class BuildViewModel : Tool
         if (!base.OnClose())
             return false;
 
-        _buildSession = null;
-        Session.Terminal.ProcessExited -= OnProcessExited;
-        Session.Terminal.Shutdown();
-        return true;
-    }
-
-    private void OnProcessExited(object? sender, ProcessExitedEventArgs e) =>
-        Dispatcher.UIThread.Post(() => CompleteStage(sender, e.ExitCode));
-
-    private void CompleteStage(object? sender, int exitCode)
-    {
-        if (!ReferenceEquals(sender, Session.Terminal) || _buildSession is not { } session)
-            return;
-
-        var outcome = session.ProcessExited(exitCode);
-        if (outcome.NextProcess is { } nextProcess)
-        {
-            StartProcess(nextProcess);
-            return;
-        }
-
-        _buildSession = null;
-        OperationError = outcome.ErrorMessage;
-        OperationExited?.Invoke(session.Operation, outcome.ExitCode ?? -1);
-    }
-}
-
-public sealed partial class BuildTerminalSession : ObservableObject
-{
-    private bool _focusPending;
-
-    [ObservableProperty]
-    private ReadOnlyDockTerminalView _terminal = new();
-
-    public void RequestFocus() => _focusPending = true;
-
-    public bool ConsumeFocusRequest()
-    {
-        if (!_focusPending)
-            return false;
-
-        _focusPending = false;
+        _operation?.Cancel();
         return true;
     }
 }

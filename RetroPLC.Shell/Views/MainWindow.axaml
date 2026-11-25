@@ -224,8 +224,8 @@
                     <MenuItem Header="Watch All Forces" IsVisible="False" />
                     <MenuItem Header="Add to Watch" IsVisible="False" />
                     <Separator />
-                    <MenuItem Header="Go Online" Command="{Binding GoOnlineCommand}" IsVisible="False" />
-                    <MenuItem Header="Go Offline" Command="{Binding GoOfflineCommand}" IsVisible="False" />
+                    <MenuItem Header="Go Online" Command="{Binding GoOnlineCommand}" />
+                    <MenuItem Header="Go Offline" Command="{Binding GoOfflineCommand}" />
                     <MenuItem Header="Login" Command="{Binding LoginCommand}" IsVisible="False" />
                     <MenuItem Header="Logout" Command="{Binding LogoutCommand}" IsVisible="False" />
                     <MenuItem Header="Download" Command="{Binding DownloadCommand}" />

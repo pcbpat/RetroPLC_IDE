@@ -16,12 +16,12 @@ PROGRAM Main
 
     CASE ledState_s OF
         eLED_STATE.LED_ON :
-	        led1 := TRUE;
+	        led1 := FALSE;
 	        led3 := TRUE;
 	        ledState_s := eLED_STATE.LED_OFF;
 
         eLED_STATE.LED_OFF :
-	        led1 := FALSE;
+	        led1 := TRUE;
 	        led3 := FALSE;
 	        ledState_s := eLED_STATE.LED_ON;
 
@@ -30,6 +30,6 @@ PROGRAM Main
     led2 := NOT led1;
     led4 := NOT led3;
     
-    counter := counter + 1;
+    counter := counter + 5;
 
 END_PROGRAM

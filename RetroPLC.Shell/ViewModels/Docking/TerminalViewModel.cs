@@ -30,17 +30,17 @@ public sealed class TerminalViewModel : Tool
         }
     }
 
-    public static async Task<TerminalViewModel> CreateAsync(ZephyrConfiguration configuration, string? projectDirectory,
-        ZephyrBuildConfiguration? project, CancellationToken cancellationToken)
+    public static Task<TerminalViewModel> CreateAsync(BuildEnvironment environment, CancellationToken cancellationToken)
     {
         try
         {
-            return new TerminalViewModel(await configuration.CreateTerminalAsync(projectDirectory, project, cancellationToken), null);
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(new TerminalViewModel(environment.CreateTerminal(), null));
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
                                            PlatformNotSupportedException or ArgumentException or InvalidOperationException)
         {
-            return new TerminalViewModel(null, exception.Message);
+            return Task.FromResult(new TerminalViewModel(null, exception.Message));
         }
     }
 
